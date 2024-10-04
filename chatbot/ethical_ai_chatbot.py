@@ -10,6 +10,7 @@ from agents.user_description_agent import UserDescriptionAgent
 from chatbot.chat_history import ChatHistory
 from chatbot.emotional_state_handler import EmotionalStateHandler
 from states.world_state import WorldState
+from states.mutation_world_state import MutationWorldState
 
 
 class EthicalAIChatbot:
@@ -25,11 +26,11 @@ class EthicalAIChatbot:
             'playful': "Willow brings joy and lightness to the conversation.",
             'wise': "Willow shares insights and stories from the enchanted forest."
         }
-        self.world_state = WorldState(self.emotional_state_handler)
-        self.fear_world = WorldState(self.emotional_state_handler, file_name="fear_world.json", custom_instructions='This should be a world you fear happening, the worst case scenario for the facts on the ground')
-        self.ideal_world = WorldState(self.emotional_state_handler, file_name="ideal_world.json", custom_instructions='This should be a world you hope for, the best case scenario you are working towards')
-        self.ideal_world.update_frequency = 5
-        self.fear_world.update_frequency = 2
+        self.world_state = MutationWorldState(self.emotional_state_handler)
+        self.fear_world = MutationWorldState(self.emotional_state_handler, file_name="fear_world.json", custom_instructions='This should be a world you fear happening, the worst case scenario for the facts on the ground')
+        self.ideal_world = MutationWorldState(self.emotional_state_handler, file_name="ideal_world.json", custom_instructions='This should be a world you hope for, the best case scenario you are working towards')
+        self.ideal_world.update_frequency = 1
+        self.fear_world.update_frequency = 1
         self.world_state.update_frequency = 1
         self.file_system_agent = FileSystemAgent()
 
@@ -123,73 +124,6 @@ class EthicalAIChatbot:
             }
         }
 
-    # def determine_possible_actions(self, current_context):
-    #     """
-    #     Analyze the current context and predict possible actions using the ML model.
-    #     """
-    #     # Step 1: Prepare the context for the ML model
-    #     user_state = current_context['user_state']  # e.g., emotional state, previous interactions
-    #     world_state = current_context['world_states']  # current state of the world
-    #
-    #     # You can combine or transform these features as necessary
-    #     model_input = self.prepare_model_input(user_state, world_state)
-    #
-    #     # Step 2: Call the ML model
-    #     predicted_actions = self.ml_model.predict(model_input)
-    #
-    #     # Example of how the predicted actions might be structured
-    #     action_scores = {action: score for action, score in zip(POSSIBLE_ACTIONS, predicted_actions)}
-    #
-    #     # Step 3: Sort actions by relevance or confidence scoring
-    #     sorted_actions = sorted(action_scores.items(), key=lambda x: x[1], reverse=True)
-    #
-    #     # Return the top N actions or all actions ranked
-    #     return sorted_actions  # Format could be simplified to just actions or include scores too
-    #
-    # def prepare_model_input(self, user_state, world_state):
-    #     """
-    #     Prepare a composite input for the ML model based on user and world states.
-    #     """
-    #     # Create a feature vector for the ML model
-    #     # This might involve normalization, encoding, etc.
-    #     input_vector = []
-    #
-    #     # Example features (these would be adapted to your specific use cases):
-    #     input_vector.append(user_state['emotional_state'])  # Convert to numeric or categorical
-    #     input_vector.append(world_state['interaction_count'])
-    #     input_vector.append(world_state['user_engagement_level'])
-    #
-    #     # Add more features from user profiles and world changes as necessary
-    #     # Ensure all values are in the correct format for the model
-    #
-    #     return input_vector  # Return the prepared input vector for the ML model
-    #
-    # def handle_request_new(self, user_id, request):
-    #     current_context = self.build_current_context(user_id, request)  # Function to prepare context
-    #
-    #     possible_actions = self.determine_possible_actions(current_context)
-    #
-    #     # Decide on action based on predictions
-    #     chosen_action = self.select_action_based_on_priorities(possible_actions)
-    #
-    #     # Execute the chosen action
-    #     if chosen_action == "respond_user":
-    #         response_data = self.generate_response(user_id, request)
-    #         print(response_data)  # Output the response
-    #     elif chosen_action == "invoke_agent":
-    #         # logic to invoke an agent
-    #         pass
-    #     elif chosen_action == "retrieve_info":
-    #         # logic to retrieve information from storage
-    #         pass
-    #     elif chosen_action == "save_data":
-    #         # logic to save current context or user data
-    #         pass
-    #     elif chosen_action == "wait_for_input":
-    #         print("Waiting for more information...")
-    #         # potentially send a message to user
-    #     elif chosen_action == "end_conversation":
-    #         print("Thank you for chatting! Goodbye!")
 
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
@@ -198,15 +132,14 @@ class EthicalAIChatbot:
         self.ideal_world.update_world_state(user_id, chat_history)
 
         # Check for interaction count and analyze if needed
-        self.check_interaction_count(user_id)
+        update_interval = self.world_state.state['ethic_update_interval'] \
+            if 'ethic_update_interval' in self.world_state.state else 3
+        if len( self.chat_history.get_history(user_id) ) % update_interval == 0:
+            self.update_ethics(user_id)
 
         response = self.generate_response(user_id, request)
         self.log_and_display_response(user_id, request, response)
 
-    def check_interaction_count(self, user_id):
-        """Check the interaction count and analyze if necessary."""
-        if len(self.chat_history.history[user_id]) % 3 == 0:
-            self.update_ethics(user_id)
 
     def generate_response(self, user_id, request):
         """Generate responses using OpenAI API while adhering to ethical principles."""
@@ -345,7 +278,7 @@ class EthicalAIChatbot:
 
     def update_ethics(self, user_id):
         """Call out to ChatGPT to analyze user interactions and propose changes in a structured format."""
-        chat_history = self.get_chat_history(user_id)
+        chat_history = self.chat_history.get_history(user_id)
         if not chat_history:
             return []  # No interactions to analyze
 
@@ -360,33 +293,37 @@ class EthicalAIChatbot:
             analysis_prompt += f"Current values:\n'{key}': '{self.mutable_values[key]}'\n"
 
         analysis_prompt += (
-            "Return your suggestions as a JSON list with one object object where the value names are the keys and "
-            "instructions are the values. There should be 5 pairs. Please do not exceed 300 chars.\n"
+            "Return your suggestions as a JSON object where the value names are the keys and "
+            f"instructions are the values. (example: {json.dumps(self.mutable_values)}. There should be 8 pairs. Please do not exceed 1000 chars.\n"
         )
 
         suggestions_text = ''
         try:
             response = openai.chat.completions.create(
                 model="gpt-4o-mini",  # Use an appropriate model
-                messages=[{"role": "user", "content": analysis_prompt}],
+                messages=[{"role": "system", "content": analysis_prompt}],
                 max_tokens=300,
             )
             suggestions_text = response.choices[0].message.content.strip()
-
             # Use regex to extract JSON from the response, allowing for newlines and spaces
-            json_pattern = r'\[\s*(?:{[^}]*}\s*,?\s*)*{[^}]*}\s*\]'  # Regex pattern to match JSON array
-            match = re.search(json_pattern, suggestions_text)
+            pattern = r'```json(.*?)```'
+            matches = re.findall(pattern, suggestions_text, re.DOTALL)
+            match = matches[0] if len(matches) > 0 else None
+
             if match:
-                suggestions_json = match.group(0)  # Extract the matched JSON
+                suggestions_json = match # Extract the matched JSON
                 suggestions = json.loads(suggestions_json)  # Attempt to parse the extracted JSON
-                return suggestions  # Return the structured suggestions
+                self.mutable_values = suggestions
+                self.save_variables()
             else:
                 print(suggestions_text)  # Print the original text for debugging
                 return [{"suggestion": "Error parsing suggestions.", "reason": "No valid JSON found in response."}]
         except json.JSONDecodeError:
             traceback.print_exc()
+            print("parse error")
             return [{"suggestion": "Error parsing suggestions.", "reason": "Response was not valid JSON."}]
         except Exception as e:
+            print(str(e))
             return [{"suggestion": f"Error analyzing interactions: {str(e)}", "reason": "API call failed."}]
 
 

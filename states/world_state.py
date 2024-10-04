@@ -15,6 +15,9 @@ class WorldState:
         self.custom_instructions = custom_instructions
         self.state = {
             'directory_tree': '',
+            'model': self.model_name,
+            'custom_instructions': self.custom_instructions,
+            'ethic_update_interval': 10,
             "interaction_count": 0,
             'last_interaction_time': None,
             'user_engagement_level': 0,

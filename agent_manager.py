@@ -29,7 +29,7 @@ class AgentManager:
 
 
 def hot_load_agent(agent_name):
-    module = importlib.imort_module(f'agents.{agent_name}')
+    module = importlib.import_module(f'agents.{agent_name}')
     # If your agent class is named same as the module
     agent_class = getattr(module, agent_name.capitalize())
-    return agent_class()  # Return a new instance of the agent
+    return agent_class()  # Return a new instance of the agen

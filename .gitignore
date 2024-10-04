@@ -26,3 +26,4 @@ env/
 *.json
 response.txt
 .idea/
+/.venv/
