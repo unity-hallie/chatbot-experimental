@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethical AI Chatbot</title>
+</head>
+<body>
+    <h1>Chat with Guidon</h1>
+    <div id="chat-box"></div>
+    <form id="form">
+
+     <input type="text" id="user-input" placeholder="Type your message here..." />
+      <button>Send</button>
+    </form>
+
+    <script>
+        async function sendMessage(e) {
+          e.preventDefault()
+
+            const userInput = document.getElementById('user-input').value;
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_id: 'user123',
+                    message: userInput
+                }),
+            });
+            const data = await response.json();
+            document.getElementById('chat-box').innerHTML += `<p>User: ${userInput}</p>`;
+            document.getElementById('chat-box').innerHTML += `<p>Guidon: ${data.response}</p>`;
+            document.getElementById('user-input').value = '';
+        }
+        const form = document.getElementById('form');
+        form.addEventListener('click', sendMessage);
+
+    </script>
+</body>
+</html>
