@@ -1,0 +1,28 @@
+/.env
+/user_descriptions.json
+/saved_variables.json
+/mutable_values.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+
+# Jupyter Notebook checkpoints
+*.ipynb_checkpoints
+
+# Virtual environment
+venv/
+env/
+
+# Temporary files
+*.bak
+*.tmp
+
+# Output files
+*.json
+response.txt
+.idea/
