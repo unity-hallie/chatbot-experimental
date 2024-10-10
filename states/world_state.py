@@ -7,9 +7,11 @@ from chatbot.emotional_state_handler import EmotionalStateHandler
 
 class WorldState:
     def __init__(self, emotional_state_handler: EmotionalStateHandler, file_name='world_state.json',
+                 update_frequency = 1,
                  custom_instructions="", model='gpt-4o-mini'):
         self.emotional_state_handler = emotional_state_handler
-        self.update_frequency = 1
+        self.interaction_count = 0
+        self.update_frequency = update_frequency
         self.model_name = model
         self.file_name = file_name
         self.custom_instructions = custom_instructions
@@ -18,7 +20,6 @@ class WorldState:
             'model': self.model_name,
             'custom_instructions': self.custom_instructions,
             'ethic_update_interval': 10,
-            "interaction_count": 0,
             'last_interaction_time': None,
             'user_engagement_level': 0,
             'user': {},
@@ -45,7 +46,7 @@ class WorldState:
             print(f"Error saving world state: {str(e)}")
 
     def update_interaction(self):
-        self.state['interaction_count'] += 1
+        self.interaction_count += 1
         self.state['last_interaction_time'] = datetime.now().isoformat()
 
     def generate_world_state_from_interactions(self, chat_history):
@@ -56,7 +57,6 @@ class WorldState:
             response = openai.chat.completions.create(
                 model=self.model_name,
                 messages=[
-                    {"role": "system", "content": self.get_src()},
                     {"role": "system", "content": prompt},
                     {"role": "system", "content": self.custom_instructions}
                 ],
@@ -91,7 +91,7 @@ class WorldState:
         self.update_interaction()
 
         self.state['user_emotional_state'] = self.emotional_state_handler.get_emotional_state(chat_history[-5:0])
-        if self.state['interaction_count'] % self.update_frequency == 0:  # Generate after every 5 interactions.
+        if self.interaction_count % self.update_frequency == 0:  # Generate after every 5 interactions.
             generated_values = self.generate_world_state_from_interactions(chat_history)
             self.state.update(generated_values)  # Update with generated values
             self.save_state()

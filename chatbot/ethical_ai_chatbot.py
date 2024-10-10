@@ -26,12 +26,33 @@ class EthicalAIChatbot:
             'playful': "Willow brings joy and lightness to the conversation.",
             'wise': "Willow shares insights and stories from the enchanted forest."
         }
-        self.world_state = MutationWorldState(self.emotional_state_handler)
-        self.fear_world = MutationWorldState(self.emotional_state_handler, file_name="fear_world.json", custom_instructions='This should be a world you fear happening, the worst case scenario for the facts on the ground')
-        self.ideal_world = MutationWorldState(self.emotional_state_handler, file_name="ideal_world.json", custom_instructions='This should be a world you hope for, the best case scenario you are working towards')
-        self.ideal_world.update_frequency = 1
-        self.fear_world.update_frequency = 1
-        self.world_state.update_frequency = 1
+        self.world_states = [
+            MutationWorldState(
+                self.emotional_state_handler,
+                update_frequency = 1,
+                update_size = 400,
+                file_name="incremental_world_state.json",
+                custom_instructions="This is the stable view of the current world state. It should represent the world as it actually is generally."),
+            MutationWorldState(
+                self.emotional_state_handler,
+                update_frequency = 5,
+                update_size = 400,
+                file_name="fear_world.json",
+                custom_instructions='This should be a world you fear happening, the worst case scenario for the facts on the ground'),
+            MutationWorldState(
+                self.emotional_state_handler,
+                update_frequency = 5,
+                file_name="ideal_world.json",
+                update_size = 400,
+                custom_instructions='This should be a world you hope for, the best case scenario you are working towards'),
+            WorldState(
+                self.emotional_state_handler,
+                update_frequency = 3,
+                file_name="right_now_world.json",
+                custom_instructions='This should be the world right now as best you understand it based on available data'
+            )
+        ]
+        # self.world_state =
         self.file_system_agent = FileSystemAgent()
 
         self.user_descriptions = self.load_user_descriptions() or []
@@ -39,7 +60,6 @@ class EthicalAIChatbot:
             'name': name,
         }
         self.name = self.variables['name'] or name
-
 
         # Immutable core values
         self.core_values = {
@@ -68,22 +88,11 @@ class EthicalAIChatbot:
             "Feedback Incorporation": "Actively seek and integrate user feedback to improve the chatbot's performance and relevance."
         }
 
-
-
         self.suggested_functions = {}  # Store suggested functions for review
         self.user_descriptions = {}  # Track user descriptions
 
         self.user_description_agent.start()
         self.world_state_updates = []  # Store updates for review
-
-
-
-
-    def load_world_state(self):
-        """Load the current world state from the world_state module."""
-        from states import world_state
-        self.world_state = world_state.WorldState(emotional_state_handler=self.emotional_state_handler)
-        self.world_state.load_state()
 
 
     def display_ethical_framework(self):
@@ -107,39 +116,31 @@ class EthicalAIChatbot:
         """Format the interaction data before logging."""
         return {'user_id': user_id, **interaction}
 
-
     def set_user_description(self, user_id, description):
         """Set or update a short text description for the user."""
         self.user_descriptions[user_id] = description
 
     def build_current_context(self, user_id, request):
         return {
-            'world_states': {
-                'feared_state': self.fear_world.state,
-                'ideal_state' :self.ideal_world.state,
-                'real_state':self.world_state,
-            },
+            'world_states': map(lambda a: a.state, self.world_states),
             'variables': {
                 self.variables: self.variables
             }
         }
 
-
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
-        self.world_state.update_world_state(user_id, chat_history)
-        self.fear_world.update_world_state(user_id, chat_history)
-        self.ideal_world.update_world_state(user_id, chat_history)
+
+        for state in self.world_states:
+            state.update_world_state(user_id, chat_history)
 
         # Check for interaction count and analyze if needed
-        update_interval = self.world_state.state['ethic_update_interval'] \
-            if 'ethic_update_interval' in self.world_state.state else 3
-        if len( self.chat_history.get_history(user_id) ) % update_interval == 0:
+        update_interval = self.world_states[0].interaction_count
+        if len(self.chat_history.get_history(user_id)) % update_interval == 0:
             self.update_ethics(user_id)
 
         response = self.generate_response(user_id, request)
         self.log_and_display_response(user_id, request, response)
-
 
     def generate_response(self, user_id, request):
         """Generate responses using OpenAI API while adhering to ethical principles."""
@@ -194,23 +195,10 @@ class EthicalAIChatbot:
 
         messages = [
             {"role": "system",
-             "content": f"You are {self.name}, a {self.world_state.state}. Use a casual and idiomatic tone in your responses."},
-            {
-                "role": "system",
-                "content": f"The current world state is ${json.dumps(self.world_state.state)}",
-            },
-            {
-                "role": "system",
-                "content": f"The ideal state is ${json.dumps(self.ideal_world.state)}",
-            },
-            {
-                "role": "system",
-                "content": f"The feared state is ${json.dumps(self.fear_world.state)}",
-            },
+             "content": f"You are {self.name}. Use a casual and idiomatic tone in your responses."},
             {"role": "system",
              "content": f"Additional variables: {json.dumps(self.variables)}"
              },
-
             {
                 "role": "system",
                 "content": f"You are an ethical chatbot named {self.name}. Adhere to the following ethical guidelines:\n"
@@ -218,11 +206,14 @@ class EthicalAIChatbot:
             },
         ]
 
+
         for interaction in chat_history:
-            if('request' in interaction):
+            if 'request' in interaction:
                 messages.append({"role": "user", "content": interaction['request']})
                 messages.append({"role": "assistant", "content": interaction['response']})
 
+        for world_state in self.world_states:
+            messages.append({"role": "system", "content": world_state.custom_instructions + " " + json.dumps(world_state.state,indent=2)})
         messages.append({"role": "user", "content": request})
         return messages
 
@@ -251,6 +242,7 @@ class EthicalAIChatbot:
         except json.JSONDecodeError:
             print("Error: Could not parse user descriptions.")
             return None
+
     def load_mutable_values(self):
         """Load mutable ethical values from a file, if available."""
         try:
@@ -264,7 +256,6 @@ class EthicalAIChatbot:
 
     def save_variables(self):
         """Save the current state of variables to a file."""
-        self.world_state.save_state()
         self.chat_history.save()
         try:
             with open('saved_variables.json', 'w') as file:
@@ -311,7 +302,7 @@ class EthicalAIChatbot:
             match = matches[0] if len(matches) > 0 else None
 
             if match:
-                suggestions_json = match # Extract the matched JSON
+                suggestions_json = match  # Extract the matched JSON
                 suggestions = json.loads(suggestions_json)  # Attempt to parse the extracted JSON
                 self.mutable_values = suggestions
                 self.save_variables()
@@ -325,7 +316,6 @@ class EthicalAIChatbot:
         except Exception as e:
             print(str(e))
             return [{"suggestion": f"Error analyzing interactions: {str(e)}", "reason": "API call failed."}]
-
 
     def propose_command(self, command):
         """Propose a command to the user and ask for confirmation."""
@@ -356,7 +346,6 @@ class EthicalAIChatbot:
                 print(result.stderr)
         except Exception as e:
             print(f"An error occurred while executing the command: {str(e)}")
-
 
     def display_response(self, user_id, response):
         """Display the chatbot's response in a transparent and empathetic manner."""
