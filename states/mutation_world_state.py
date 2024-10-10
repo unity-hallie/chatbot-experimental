@@ -151,6 +151,9 @@ class MutationWorldState:
         prompt = (
             f"{special_instructions}\n"
             f"{self.custom_instructions}"
+            "The previous world state is"
+            f"{json.dumps(self.state)}"
+            f"The current time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}"
             f"Based on the following recent interactions, please suggest mutations to the world state"
             f" to bring it in line in the following history:\n"
             f"{formatted_history}"
@@ -188,7 +191,9 @@ class MutationWorldState:
         elif action in {'add', 'remove'}:
             if isinstance(value, str):
                 if action == 'add':
-                    if key not in self.state:
+                    if target_exists and not isinstance(target_value, list):
+                        self.state[key] = [target_value]
+                    elif key not in self.state:
                         self.state[key] = []
                     # Provide logic for how to add items, e.g., to a list or a dictionary
                     self.state[key].append(value)  # Adjust to where you want to add

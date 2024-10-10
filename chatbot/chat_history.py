@@ -15,7 +15,12 @@ class ChatHistory:
         """Log each interaction with the user."""
         user_history = self.get_history(user_id)
 
-        interaction = {'user_id': user_id, 'request': request, 'response': response}
+        interaction = {
+            'user_id': user_id,
+            'request': request,
+            'response': response,
+            'time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
         user_history.append(interaction)
 
     def get_history(self, user_id):
@@ -33,14 +38,17 @@ class ChatHistory:
         chat_history = self.get_history(user_id)
 
         if chat_history:
-            with open(f"logs\log_{datetime.datetime.now().strftime('%H%M%S%Y-%m-%d')}.json", 'w') as file:
+            with open(f"logs\\log_{datetime.datetime.now().strftime('%H%M%S%Y-%m-%d')}.json", 'w') as file:
                 json.dump(chat_history, file, indent=2)
             # Generate a summary of the last session
             last_session_summary = self.create_summary(chat_history)
 
             # Prepend the summary to the chat history
             self.history[user_id] = [
-                {"role": "system", "content": f"Previously on our journey: {last_session_summary}"}
+                {
+                    "role": "system",
+                    "content": f"Previously on our journey: {last_session_summary}",
+                    "time": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             ]
             for interaction in chat_history[-5:]:
                 self.history[user_id].append(interaction)
