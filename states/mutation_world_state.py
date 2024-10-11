@@ -43,16 +43,21 @@ class MutationWorldState:
     def __init__(self,
                  emotional_state_handler,
                  update_frequency=1,
+                 tokens_per_second=1,
                  update_size=100,
                  file_name='world_state.json',
                  custom_instructions="",
                  model_name='gpt-4o-mini'):
         self.update_size = update_size
+        self.token_bank = 0
+        self.last_token_cost = self.update_size
+        self.tokens_per_second = tokens_per_second
         self.emotional_state_handler = emotional_state_handler
         self.custom_instructions = custom_instructions
         self.model_name = model_name
         self.update_frequency = update_frequency
         self.interaction_count = 0
+        self.last_update = datetime.now()
         self.state = {
             'directory_tree': '',
             'model': model_name,
@@ -105,11 +110,15 @@ class MutationWorldState:
     def update_interaction(self):
         self.interaction_count += 1
 
-    def update_world_state(self, user_id, chat_history):
+    def update_world_state(self, user_id, chat_history, last_request):
         """Update the world state with input states."""
         # Determine the appropriate mutation based on chat history
-        if self.interaction_count % self.update_frequency == 0:
-            mutations = self.generate_mutation_from_interactions(chat_history)
+        delta_time = datetime.now() - self.last_update
+        self.token_bank += ( delta_time.total_seconds() * self.tokens_per_second)
+        print(f"{self.file_name} bank : {self.token_bank} / {self.last_token_cost}")
+        if self.token_bank > self.last_token_cost:
+            self.last_update = datetime.now()
+            mutations = self.generate_mutation_from_interactions(chat_history, last_request)
             for mutation in mutations:
                 self.apply_mutation(mutation)
             self.update_interaction()
@@ -117,9 +126,9 @@ class MutationWorldState:
             return True
         return False
 
-    def generate_mutation_from_interactions(self, chat_history):
+    def generate_mutation_from_interactions(self, chat_history, last_request):
         """Generate mutations based on recent interactions."""
-        prompt = self.create_mutation_prompt(chat_history)
+        prompt = self.create_mutation_prompt(chat_history, last_request)
         mutations = '{}'
         try:
             response = openai.chat.completions.create(
@@ -127,12 +136,15 @@ class MutationWorldState:
                 messages=[
                     {"role": "system",
                      "content": "You are an AI tasked with proposing mutations to an AI world state."},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": last_request},
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=self.update_size,
             )
             # Extract and decode the mutation JSON from the response
             mutations = response.choices[0].message.content.strip().replace('```json', '').replace('```', '')
+            self.last_token_cost = response.usage.total_tokens
+            self.token_bank -= self.last_token_cost
             print(json.loads(mutations))
             return json.loads(mutations)  # Convert to JSON
         except Exception as e:
@@ -141,12 +153,11 @@ class MutationWorldState:
             return {}
 
     def create_mutation_prompt(self, chat_history, special_instructions=""):
+        history_length = min(len(chat_history) - 1, self.update_size * 2)
         """Create a prompt to suggest mutations based on user interactions."""
-        recent_history = chat_history[-5:]
-        formatted_history = "\n".join([
-            f"User: {interaction['request']}\nAI: {interaction['response']}"
-            for interaction in recent_history
-        ])
+
+        recent_history = chat_history[-history_length:]
+        formatted_history = json.dumps(recent_history)
 
         prompt = (
             f"{special_instructions}\n"
@@ -157,6 +168,7 @@ class MutationWorldState:
             f"Based on the following recent interactions, please suggest mutations to the world state"
             f" to bring it in line in the following history:\n"
             f"{formatted_history}"
+            f"\n"
             f"Return the mutations as a list of JSON of type Mutation. Please double check "        
             f"to make sure the types of the variables being mutated are consistent. "
             f"Use no more than {self.update_size} tokens."

@@ -43,15 +43,15 @@ class ChatHistory:
             # Generate a summary of the last session
             last_session_summary = self.create_summary(chat_history)
 
+            self.history[user_id] = chat_history[-10:]
+
             # Prepend the summary to the chat history
-            self.history[user_id] = [
+            self.history[user_id].append(
                 {
                     "role": "system",
                     "content": f"Previously on our journey: {last_session_summary}",
                     "time": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-            ]
-            for interaction in chat_history[-5:]:
-                self.history[user_id].append(interaction)
+            )
 
         # Save the updated chat history back
 
@@ -71,7 +71,8 @@ class ChatHistory:
         summary_response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are summarizing a conversation. Please output the summary as a five paragraph essay."},
+                {"role": "system",
+                 "content": "You are summarizing a conversation. Please output the summary as a five paragraph essay."},
                 {"role": "user", "content": combined_history},
             ],
             max_tokens=2000
@@ -98,5 +99,3 @@ class ChatHistory:
     def save(self):
         with open('user_sessions.json', 'w') as file:
             json.dump(self.history, file, indent=2)
-
-

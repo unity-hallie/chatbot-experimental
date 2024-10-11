@@ -29,25 +29,26 @@ class EthicalAIChatbot:
         self.world_states = [
             MutationWorldState(
                 self.emotional_state_handler,
-                update_frequency = 1,
-                update_size = 400,
+                tokens_per_second = 1,
+                update_size = 2000,
                 file_name="incremental_world_state.json",
                 custom_instructions="This is the stable view of the current world state. It should represent the world as it actually is generally."),
             MutationWorldState(
                 self.emotional_state_handler,
-                update_frequency = 5,
-                update_size = 400,
+                tokens_per_second = 0.5,
+                update_size = 1000,
                 file_name="fear_world.json",
-                custom_instructions='This should be a world you fear happening, the worst case scenario for the facts on the ground'),
+                custom_instructions='This is the Bad Future and the feared present. It should be a world you fear happening,'
+                                    ' the worst case scenario if things keep going wrong.'),
             MutationWorldState(
                 self.emotional_state_handler,
-                update_frequency = 5,
+                tokens_per_second = 0.5,
                 file_name="ideal_world.json",
-                update_size = 400,
+                update_size = 1000,
                 custom_instructions='This should be a world you hope for, the best case scenario you are working towards'),
             WorldState(
                 self.emotional_state_handler,
-                update_frequency = 3,
+                update_frequency = 19,
                 file_name="right_now_world.json",
                 custom_instructions='This should be the world right now as best you understand it based on available data'
             )
@@ -132,11 +133,11 @@ class EthicalAIChatbot:
         chat_history = self.get_chat_history(user_id)
 
         for state in self.world_states:
-            state.update_world_state(user_id, chat_history)
+            state.update_world_state(user_id, chat_history, request)
 
         # Check for interaction count and analyze if needed
-        update_interval = self.world_states[0].interaction_count
-        if len(self.chat_history.get_history(user_id)) % update_interval == 0:
+        update_interval = 11
+        if len(self.chat_history.get_history(user_id)) % update_interval == update_interval - 1:
             self.update_ethics(user_id)
 
         response = self.generate_response(user_id, request)
@@ -208,8 +209,17 @@ class EthicalAIChatbot:
 
 
         for interaction in chat_history:
+            if "role" in interaction and interaction["role"] == "system":
+                content = interaction["content"] if "content" in interaction else ''
+                if 'time' in interaction:
+                    content += '\n' + interaction['time']
+                message = {
+                    "role": "system",
+                    "content" : content
+                }
+                messages.append(interaction)
             if 'request' in interaction:
-                messages.append({"role": "user", "content": interaction['request']})
+                messages.append({"role": "user", "content": interaction['request'] + interaction['time'] if 'time' in interaction else ''})
                 messages.append({"role": "assistant", "content": interaction['response']})
 
         for world_state in self.world_states:
@@ -305,6 +315,7 @@ class EthicalAIChatbot:
                 suggestions_json = match  # Extract the matched JSON
                 suggestions = json.loads(suggestions_json)  # Attempt to parse the extracted JSON
                 self.mutable_values = suggestions
+                print (self.mutable_values)
                 self.save_variables()
             else:
                 print(suggestions_text)  # Print the original text for debugging

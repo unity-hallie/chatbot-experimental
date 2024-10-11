@@ -49,7 +49,7 @@ class WorldState:
         self.interaction_count += 1
         self.state['last_interaction_time'] = datetime.now().isoformat()
 
-    def generate_world_state_from_interactions(self, chat_history):
+    def generate_world_state_from_interactions(self, chat_history, request):
         """Generate advanced aspects of the world state dynamically based on user interactions."""
         prompt = self.create_generation_prompt(chat_history)
         generated_state = ''
@@ -57,6 +57,7 @@ class WorldState:
             response = openai.chat.completions.create(
                 model=self.model_name,
                 messages=[
+                    {"role": "user", "content": request},
                     {"role": "system", "content": prompt},
                     {"role": "system", "content": self.custom_instructions}
                 ],
@@ -72,9 +73,10 @@ class WorldState:
             return {}
 
     def create_generation_prompt(self, chat_history):
+        history_length = self.update_frequency * 2
         """Create a prompt based on previous user interactions for generating world state."""
         chat_len = len(chat_history)
-        history = chat_history if chat_len < 5 else chat_history[-5:]
+        history = chat_history if chat_len < history_length else chat_history[-history_length:]
         return f"Based on the following interactions, suggest an updated world state ${json.dumps(history)}\nReturn a JSON object with less than 1000 characters."
 
     def get_src(self):
@@ -86,13 +88,13 @@ class WorldState:
         except Exception as e:
             return f"An error occurred while fetching source code: {str(e)}"
 
-    def update_world_state(self, user_id, chat_history):
+    def update_world_state(self, user_id, chat_history, request):
         """Update and generate parts of the world state based on user interactions."""
         self.update_interaction()
 
-        self.state['user_emotional_state'] = self.emotional_state_handler.get_emotional_state(chat_history[-5:0])
         if self.interaction_count % self.update_frequency == 0:  # Generate after every 5 interactions.
-            generated_values = self.generate_world_state_from_interactions(chat_history)
+            self.state['user_emotional_state'] = self.emotional_state_handler.get_emotional_state(chat_history[-5:0])
+            generated_values = self.generate_world_state_from_interactions(chat_history, request)
             self.state.update(generated_values)  # Update with generated values
             self.save_state()
 
