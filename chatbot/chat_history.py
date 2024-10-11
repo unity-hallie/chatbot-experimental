@@ -15,6 +15,10 @@ class ChatHistory:
         """Log each interaction with the user."""
         user_history = self.get_history(user_id)
 
+        if len(json.dumps(user_history[:-5])) > 5000:
+            self.summarize_history(user_id)
+            user_history = self.get_history(user_id)
+
         interaction = {
             'user_id': user_id,
             'request': request,
@@ -43,7 +47,7 @@ class ChatHistory:
             # Generate a summary of the last session
             last_session_summary = self.create_summary(chat_history)
 
-            self.history[user_id] = chat_history[-10:]
+            self.history[user_id] = chat_history[-5:]
 
             # Prepend the summary to the chat history
             self.history[user_id].append(
@@ -72,10 +76,10 @@ class ChatHistory:
             model="gpt-4o-mini",
             messages=[
                 {"role": "system",
-                 "content": "You are summarizing a conversation. Please output the summary as a five paragraph essay."},
+                 "content": "You are summarizing a conversation. Please output the summary as a JSON representation of the important models discussed"},
                 {"role": "user", "content": combined_history},
             ],
-            max_tokens=2000
+            max_tokens=1000
         )
 
         # Return the generated summary

@@ -153,7 +153,7 @@ class MutationWorldState:
             return {}
 
     def create_mutation_prompt(self, chat_history, special_instructions=""):
-        history_length = min(len(chat_history) - 1, self.update_size * 2)
+        history_length = min(len(chat_history) - 1, 5)
         """Create a prompt to suggest mutations based on user interactions."""
 
         recent_history = chat_history[-history_length:]

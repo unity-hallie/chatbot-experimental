@@ -29,29 +29,29 @@ class EthicalAIChatbot:
         self.world_states = [
             MutationWorldState(
                 self.emotional_state_handler,
-                tokens_per_second = 1,
-                update_size = 2000,
+                tokens_per_second = 10,
+                update_size = 1000,
                 file_name="incremental_world_state.json",
                 custom_instructions="This is the stable view of the current world state. It should represent the world as it actually is generally."),
-            MutationWorldState(
-                self.emotional_state_handler,
-                tokens_per_second = 0.5,
-                update_size = 1000,
-                file_name="fear_world.json",
-                custom_instructions='This is the Bad Future and the feared present. It should be a world you fear happening,'
-                                    ' the worst case scenario if things keep going wrong.'),
-            MutationWorldState(
-                self.emotional_state_handler,
-                tokens_per_second = 0.5,
-                file_name="ideal_world.json",
-                update_size = 1000,
-                custom_instructions='This should be a world you hope for, the best case scenario you are working towards'),
-            WorldState(
-                self.emotional_state_handler,
-                update_frequency = 19,
-                file_name="right_now_world.json",
-                custom_instructions='This should be the world right now as best you understand it based on available data'
-            )
+            # MutationWorldState(
+            #     self.emotional_state_handler,
+            #     tokens_per_second = 0.5,
+            #     update_size = 1000,
+            #     file_name="fear_world.json",
+            #     custom_instructions='This is the Bad Future and the feared present. It should be a world you fear happening,'
+            #                         ' the worst case scenario if things keep going wrong.'),
+            # MutationWorldState(
+            #     self.emotional_state_handler,
+            #     tokens_per_second = 0.5,
+            #     file_name="ideal_world.json",
+            #     update_size = 1000,
+            #     custom_instructions='This should be a world you hope for, the best case scenario you are working towards'),
+            # WorldState(
+            #     self.emotional_state_handler,
+            #     update_frequency = 19,
+            #     file_name="right_now_world.json",
+            #     custom_instructions='This should be the world right now as best you understand it based on available data'
+            # )
         ]
         # self.world_state =
         self.file_system_agent = FileSystemAgent()
@@ -132,6 +132,9 @@ class EthicalAIChatbot:
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
 
+        if self.file_system_agent.check_open_file(request):
+            request = self.file_system_agent.ask_open(request)
+
         for state in self.world_states:
             state.update_world_state(user_id, chat_history, request)
 
@@ -192,7 +195,7 @@ class EthicalAIChatbot:
 
         if user_id in self.user_descriptions:
             self.variables['user'] = self.user_descriptions[user_id]
-            self.variables['self_project'] = self.file_system_agent.get_directory_tree('.', True)
+            #self.variables['self_project'] = self.file_system_agent.get_directory_tree('.', True)
 
         messages = [
             {"role": "system",
