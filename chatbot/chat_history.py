@@ -6,8 +6,9 @@ import openai
 
 
 class ChatHistory:
-    def __init__(self, api_key, history={}):
+    def __init__(self, api_key, history={}, file_name='history.json'):
         self.history = history
+        self.file_name = file_name
         openai.api_key = api_key
         self.load()
 
@@ -26,6 +27,9 @@ class ChatHistory:
             'time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         user_history.append(interaction)
+        self.history[user_id] = user_history
+        print(self.history[user_id])
+        self.save()
 
     def get_history(self, user_id):
         """Retrieve chat histories for a specific user."""
@@ -47,9 +51,8 @@ class ChatHistory:
             # Generate a summary of the last session
             last_session_summary = self.create_summary(chat_history)
             chat_history = [a for a in filter(lambda a: not ("role" in a and a["role"] == 'system'), chat_history)]
-            self.history[user_id] = chat_history[-5:]
+            self.history[user_id] = chat_history[-1:]
 
-            # Prepend the summary to the chat history
             self.history[user_id].append(
                 {
                     "role": "system",
@@ -108,7 +111,7 @@ class ChatHistory:
     def load(self):
         """Load previously saved user sessions from a file, if available."""
         try:
-            with open('user_sessions.json', 'r') as file:
+            with open(self.file_name, 'r') as file:
                 self.history = json.load(file)
         except FileNotFoundError:
             return None  # Return None if no saved sessions are found
@@ -117,5 +120,22 @@ class ChatHistory:
             return None
 
     def save(self):
-        with open('user_sessions.json', 'w') as file:
+        print("saving")
+        with open(self.file_name, 'w') as file:
             json.dump(self.history, file, indent=2)
+
+    def get_formatted_history(self, user_id):
+        messages = []
+        for interaction in self.get_history(user_id):
+            if "role" in interaction and interaction["role"] == "system":
+                content = interaction["content"] if "content" in interaction else ''
+                if 'time' in interaction:
+                    content += '\n' + interaction['time']
+                message = {
+                    "role": "system",
+                    "content" : content
+                }
+                messages.append(interaction)
+            if 'request' in interaction:
+                messages.append({"role": "user", "content": str(interaction['request'] )+ interaction['time'] if 'time' in interaction else ''})
+                messages.append({"role": "assistant", "content": interaction['response']})

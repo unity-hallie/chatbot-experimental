@@ -2,18 +2,24 @@ import difflib
 import json
 import os
 import fnmatch
+import subprocess
+
 import torch
 from torch import cosine_similarity
 from transformers import DistilBertTokenizer, DistilBertModel
 from functools import lru_cache
 
+import chatbot
+
 
 class FileSystemAgent:
     def __init__(self):
         self.filename = None
-        self.foldername = None
+        self.full_tree = {}
+        self.gitignore_patterns = self.load_gitignore()  # Load .gitignore patterns
+        self.current_path = "."
         self.initial_file_value = ""
-        self.initial_folder_value = ""
+        self.initial_folder_value = self._current_folder()
         self.tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
         self.model = DistilBertModel.from_pretrained("distilbert-base-uncased").half()  # Use half-precision
         self.open_file_phrases = ["open file", "read from file", "access document", "open directory", "open folder"]
@@ -23,8 +29,75 @@ class FileSystemAgent:
         }
         self.intent_vectors = self._vectorize_intents(self.intent_phrases)
         self.open_file_vectors = self._vectorize_phrases(self.open_file_phrases)
-        self.full_tree = {}
-        self.gitignore_patterns = self.load_gitignore()  # Load .gitignore patterns
+
+    def fill_in_command(self, user_id, request, openai, chat_history):
+        """Generate responses using OpenAI API while adhering to ethical principles."""
+
+        messages = chat_history[-2:0]
+        messages.append({
+            "role": "system",
+            "content": self.execute_command('dir'),
+        })
+
+        messages.append({
+            "role": "system",
+            "content": "The user wants to run the next command. Please fill in any variables as you would best generate them and output either a single line or a ```bash",
+        })
+        messages.append({
+            "role": "system",
+            "content": request,
+        })
+
+        try:
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",  # Using the more efficient model
+                messages=messages,
+                max_tokens=1000,
+            ).choices[0].message.content.strip()
+
+            return response
+        except Exception as e:
+            print(e)
+            return e
+
+    def execute_command(self, command):
+        """Executes a given command in the Windows shell and returns the output."""
+        try:
+            # Use subprocess to execute the command
+            print(f"Executing command: {command} in {self.current_path}")  # Debug output
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=self.current_path)
+
+            # Return stdout or handle errors
+            if result.returncode == 0:
+                return result.stdout.strip()  # Return the command output
+            else:
+                return f"Error: {result.stderr.strip()}"  # Return error message if any
+        except Exception as e:
+            return f"An error occurred while executing the command: {str(e)}"
+
+    def open_file(self, file_path):
+        # Implement file opening logic
+        try:
+            with open(file_path, 'r') as f:
+                return f.read()
+        except FileNotFoundError:
+            return "File not found."
+
+    def list_directory(self, dir_path):
+        # Implement directory listing logic
+        try:
+            return os.listdir(dir_path)
+        except FileNotFoundError:
+            return "Directory not found."
+
+    def change_directory(self, dir_name):
+        # Update current path if changing directories
+        new_path = os.path.join(self.current_path, dir_name)
+        if os.path.isdir(new_path):
+            self.current_path = new_path
+            return f"Changed directory to {self.current_path}"
+        else:
+            return "Directory not found."
 
     def _vectorize_phrases(self, phrases):
         # Batch tokenization and processing for efficiency
@@ -81,7 +154,7 @@ class FileSystemAgent:
                 "content": file_content or "No content"
             },
             "directory" : {
-                "path" : self.foldername or "No directory",
+                "path" : self.current_path or "No directory",
                 "content": directory_content or "No content"
             }
         }
@@ -173,19 +246,20 @@ class FileSystemAgent:
     def _select_folder(self, user_prompt):
             from tkinter.filedialog import askdirectory
             foldername = askdirectory()
-            self.foldername = foldername
+            self.current_path = foldername
+            print(self.current_path)
             self.initial_folder_value = self._current_folder()
 
     def _current_folder(self):
         try:
-            foldername = self.foldername
+            foldername = self.current_path
             if foldername is None:
                 return None
             dir_content = self.get_directory_tree(foldername, full=True)
             return dir_content
         except Exception as e:
             print(f"Error reading file: {str(e)}")
-            return f"Error reading: {self.foldername}"
+            return f"Error reading: {self.current_path}"
 
     def load_gitignore(self, path="."):
         """Load patterns from .gitignore file."""

@@ -115,43 +115,79 @@ class EthicalAIChatbot:
             }
         }
 
+    def extract_commands(self, request):
+        """Extract commands and associated data from a request."""
+        pattern = r'```(\w+)\n(.*?)```'  # Matches commands within triple backticks
+        matches = re.findall(pattern, request, re.DOTALL)
+        commands = [{ 'cmd_type': cmd_type, 'data': data.strip() } for cmd_type, data in matches]
+        return commands
+
+    def handle_commands(self, user_id, request, chat_history):
+        if self.user_interaction_mode == "CLI" and request.startswith('~~'):
+            history = self.chat_history.get_history(user_id)
+            command_results = []
+            if request.startswith('~~~'):
+
+                request_command = request[3:].strip()  # Strip '~~~'
+                updated_command = self.file_system_agent.fill_in_command(user_id, request_command, openai, history)
+
+                if '```' in updated_command:  # Check for code snippets
+                    # Extract bash/PowerShell commands from the request
+                    commands = self.extract_commands(updated_command)
+                    for command in commands:
+
+                        if input(f"Do you want to run the command? (y/n) {updated_command}") == 'y':
+                            command_result = self.file_system_agent.execute_command(command["data"])
+                            print(command_result)
+                            command_results.append([command, command_result])
+                        else:
+                            break
+                    self.chat_history.add_interaction(user_id, request, json.dumps(command_results))
+
+            else:
+                command =  request[2:].strip()  # Strip '~~'
+                if input(f"Do you want to run the command? (y/n) {command}") == 'y':
+                    print(command)
+                    command_results = [command, self.file_system_agent.execute_command(command)]
+                    self.chat_history.add_interaction(user_id, request, json.dumps(command_results))
+                    self.chat_history.save()
+                    print(command_results[1])
+                    print(json.dumps(command_results))
+
+            # Prepare the prompt with command and its result
+            prompt = f"Executed Commands: {json.dumps(command_results)}"
+
+            return {
+                "role" : "user",
+                "content" : prompt
+            }
+        return None
+
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
         file_prompt = self.file_system_agent.handle_request(request)
-        if self.user_interaction_mode == "CLI" and request.startswith('~~'):
-            command = request[2:].strip()  # Strip '~~'
-            command_result = self.execute_command(command)
 
-            # Prepare the prompt with command and its result
-            prompt = f"Executed Command: {command}\nResult: {command_result}"
-            response = self.generate_response(user_id, prompt, [file_prompt])
-        else:
-            # Process normal requests as usual
-            response = self.generate_response(user_id, request, [file_prompt])
+        handled_commands = self.handle_commands(user_id, request, chat_history)
+
+        additional_messages = [file_prompt]
+
+        if handled_commands:
+            self.log_and_display_response(user_id, request, json.dumps(handled_commands))
+            return
 
         for state in self.world_states:
             state.update_world_state(user_id, chat_history, request)
 
-        self.display_response(user_id, response)
+        response = self.generate_response(user_id, request, additional_messages)
+
+        self.log_and_display_response(user_id, request, json.dumps(response))
 
     def set_user_mode(self, mode):
         """Sets the user interaction mode ('CLI' or 'Web')."""
         if mode in ["CLI", "Web"]:
             self.user_interaction_mode = mode
 
-    def execute_command(self, command):
-        """Executes a given command in the Windows shell and returns the output."""
-        try:
-            # Use subprocess to execute the command
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
-            # Return stdout or handle errors
-            if result.returncode == 0:
-                return result.stdout.strip()  # Return the command output
-            else:
-                return f"Error: {result.stderr.strip()}"  # Return error message if any
-        except Exception as e:
-            return f"An error occurred while executing the command: {str(e)}"
 
 
     def generate_response(self, user_id, request, additional_messages = []):
@@ -192,6 +228,7 @@ class EthicalAIChatbot:
         except Exception as e:
             return f"An error occurred while reading the file: {str(e)}"
 
+
     def construct_prompt(self, request, user_id, chat_history, additional_messages = []):
         """Construct a prompt for the OpenAI API that includes ethical boundaries and core values."""
         principles = {**self.core_values, **self.mutable_values}
@@ -221,8 +258,6 @@ class EthicalAIChatbot:
              },
         ]
 
-        for message in additional_messages:
-            messages.append(message)
 
 
         for interaction in chat_history:
@@ -242,6 +277,10 @@ class EthicalAIChatbot:
         for world_state in self.world_states:
             messages.append({"role": "system", "content": world_state.custom_instructions + " " + json.dumps(world_state.state,indent=2)})
         messages.append({"role": "user", "content": request})
+
+        for message in additional_messages:
+            messages.append(message)
+
         return messages
 
     def get_chat_history(self, user_id):
@@ -287,8 +326,6 @@ class EthicalAIChatbot:
         try:
             with open('saved_variables.json', 'w') as file:
                 json.dump(self.variables, file, indent=2)
-            with open('user_descriptions.json', 'w') as file:
-                json.dump(self.user_descriptions, file, indent=2)
             with open('mutable_values.json', 'w') as file:
                 json.dump(self.mutable_values, file, indent=2)
         except Exception as e:
@@ -345,36 +382,6 @@ class EthicalAIChatbot:
             print(str(e))
             return [{"suggestion": f"Error analyzing interactions: {str(e)}", "reason": "API call failed."}]
 
-    def propose_command(self, command):
-        """Propose a command to the user and ask for confirmation."""
-        print(f"Proposed command: {command}")
-
-        # Ask for user confirmation
-        confirmation = input("Do you want to run this command? (y/n): ").strip().lower()
-
-        if confirmation == 'y':
-            # Execute the command
-            self.execute_command(command)
-            print("Command executed.")
-        else:
-            print("Command skipped.")
-
-    # def execute_command(self, command):
-    #     """Execute the given command."""
-    #     try:
-    #         # Use subprocess to run the command
-    #         import subprocess
-    #         result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    #
-    #         # Display the output of the command
-    #         print("Command output:")
-    #         print(result.stdout)
-    #         if result.stderr:
-    #             print("Error output:")
-    #             print(result.stderr)
-    #     except Exception as e:
-    #         print(f"An error occurred while executing the command: {str(e)}")
-
     def display_response(self, user_id, response):
         """Display the chatbot's response in a transparent and empathetic manner."""
         n = 30
@@ -385,11 +392,11 @@ class EthicalAIChatbot:
             print(f"{self.name}: {response.encode('utf-8')}")
 
 
-    def correct_error(self, user_id, correct_interaction):
-        """Provide a mechanism for the chatbot to correct its errors and ensure fairness."""
-        response = f"Thank you for providing feedback. I'll strive to improve."
-        self.chat_history.add_interaction(user_id, correct_interaction, response)
-        self.display_response(user_id, response)
+    # def correct_error(self, user_id, correct_interaction):
+    #     """Provide a mechanism for the chatbot to correct its errors and ensure fairness."""
+    #     response = f"Thank you for providing feedback. I'll strive to improve."
+    #     self.chat_history.add_interaction(user_id, correct_interaction, response)
+    #     self.display_response(user_id, response)
 
     def log_and_display_response(self, user_id, request, response):
         self.chat_history.add_interaction(user_id, request, response)
