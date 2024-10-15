@@ -42,7 +42,7 @@ class UserDescriptionAgent:
                 f"Based on the following interactions, generate a thoughtful and insightful user description. "
                 f"Take into account the user's emotional state and engagement level:\n\n"
                 + "\n".join(interaction_texts) + "\n"
-                                                 f"Please summarize this into a personalized user description."
+                                                 f"Please summarize this into a personalized and detailed json representation of the user and their preferences."
         )
 
         # Call ChatGPT instead of manual analysis

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import subprocess
 import traceback
 
 import openai
@@ -9,7 +10,6 @@ from agents.file_system_agent import FileSystemAgent
 from agents.user_description_agent import UserDescriptionAgent
 from chatbot.chat_history import ChatHistory
 from chatbot.emotional_state_handler import EmotionalStateHandler
-from states.world_state import WorldState
 from states.mutation_world_state import MutationWorldState
 
 
@@ -17,41 +17,26 @@ class EthicalAIChatbot:
     def __init__(self, name="Wonderous Willow"):
         self.api_key = os.getenv("OPENAI_API_KEY")  # Load key from environment variable
         openai.api_key = self.api_key
-
+        self.shared_files = []
         self.emotional_state_handler = EmotionalStateHandler()
         self.chat_history = ChatHistory(openai.api_key)
-        self.user_description_agent = UserDescriptionAgent(self, self.chat_history)
-        self.character_traits = {
-            'nurturing': "Wondrous Willow embraces every user's feelings with warmth and understanding.",
-            'playful': "Willow brings joy and lightness to the conversation.",
-            'wise': "Willow shares insights and stories from the enchanted forest."
-        }
+        # self.user_description_agent = UserDescriptionAgent(self, self.chat_history)
+
         self.world_states = [
             MutationWorldState(
                 self.emotional_state_handler,
-                tokens_per_second = 10,
-                update_size = 1000,
+                tokens_per_second=1,
+                update_size=1000,
                 file_name="incremental_world_state.json",
                 custom_instructions="This is the stable view of the current world state. It should represent the world as it actually is generally."),
-            # MutationWorldState(
-            #     self.emotional_state_handler,
-            #     tokens_per_second = 0.5,
-            #     update_size = 1000,
-            #     file_name="fear_world.json",
-            #     custom_instructions='This is the Bad Future and the feared present. It should be a world you fear happening,'
-            #                         ' the worst case scenario if things keep going wrong.'),
-            # MutationWorldState(
-            #     self.emotional_state_handler,
-            #     tokens_per_second = 0.5,
-            #     file_name="ideal_world.json",
-            #     update_size = 1000,
-            #     custom_instructions='This should be a world you hope for, the best case scenario you are working towards'),
-            # WorldState(
-            #     self.emotional_state_handler,
-            #     update_frequency = 19,
-            #     file_name="right_now_world.json",
-            #     custom_instructions='This should be the world right now as best you understand it based on available data'
-            # )
+            MutationWorldState(
+                self.emotional_state_handler,
+                tokens_per_second=500,
+                update_size=500,
+                max_history_length=1,
+                file_name="topic_state.json",
+                custom_instructions="This is the view of the topics being discussed. "
+                                    " It should reflect the CURRENT conversational topics. If something isn't being discussed, backburner it and move the currently discussed topic to the fore. Use this to keep track of different topics we may be switching between and try to keep it relatively lean."),
         ]
         # self.world_state =
         self.file_system_agent = FileSystemAgent()
@@ -92,7 +77,7 @@ class EthicalAIChatbot:
         self.suggested_functions = {}  # Store suggested functions for review
         self.user_descriptions = {}  # Track user descriptions
 
-        self.user_description_agent.start()
+        # self.user_description_agent.start()
         self.world_state_updates = []  # Store updates for review
 
 
@@ -102,8 +87,9 @@ class EthicalAIChatbot:
         for principle, description in {**self.core_values, **self.mutable_values}.items():
             print(f"{principle}: {description}")
 
-    def start_session(self, user_id):
+    def start_session(self, user_id, mode="CLI"):
         """Begin a new user session, appending the summary to the beginning."""
+        self.set_user_mode(mode)
         self.chat_history.summarize_history(user_id)
         print(f"Welcome back! You can start interacting with me, {self.name}.")
 
@@ -131,30 +117,53 @@ class EthicalAIChatbot:
 
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
+        file_prompt = self.file_system_agent.handle_request(request)
+        if self.user_interaction_mode == "CLI" and request.startswith('~~'):
+            command = request[2:].strip()  # Strip '~~'
+            command_result = self.execute_command(command)
 
-        if self.file_system_agent.check_open_file(request):
-            request = self.file_system_agent.ask_open(request)
+            # Prepare the prompt with command and its result
+            prompt = f"Executed Command: {command}\nResult: {command_result}"
+            response = self.generate_response(user_id, prompt, [file_prompt])
+        else:
+            # Process normal requests as usual
+            response = self.generate_response(user_id, request, [file_prompt])
 
         for state in self.world_states:
             state.update_world_state(user_id, chat_history, request)
 
-        # Check for interaction count and analyze if needed
-        update_interval = 11
-        if len(self.chat_history.get_history(user_id)) % update_interval == update_interval - 1:
-            self.update_ethics(user_id)
+        self.display_response(user_id, response)
 
-        response = self.generate_response(user_id, request)
-        self.log_and_display_response(user_id, request, response)
+    def set_user_mode(self, mode):
+        """Sets the user interaction mode ('CLI' or 'Web')."""
+        if mode in ["CLI", "Web"]:
+            self.user_interaction_mode = mode
 
-    def generate_response(self, user_id, request):
+    def execute_command(self, command):
+        """Executes a given command in the Windows shell and returns the output."""
+        try:
+            # Use subprocess to execute the command
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+            # Return stdout or handle errors
+            if result.returncode == 0:
+                return result.stdout.strip()  # Return the command output
+            else:
+                return f"Error: {result.stderr.strip()}"  # Return error message if any
+        except Exception as e:
+            return f"An error occurred while executing the command: {str(e)}"
+
+
+    def generate_response(self, user_id, request, additional_messages = []):
         """Generate responses using OpenAI API while adhering to ethical principles."""
         chat_history = self.get_chat_history(user_id)
-        chat_prompt = self.construct_prompt(request, user_id, chat_history)
+        chat_prompt = self.construct_prompt(request, user_id, chat_history, additional_messages)
+        self.log_full_request(chat_prompt)
         try:
             response = openai.chat.completions.create(
                 model="gpt-4o-mini",  # Using the more efficient model
                 messages=chat_prompt,
-                max_tokens=1024,
+                max_tokens=2048,
             ).choices[0].message.content.strip()
 
             self.save_variables()
@@ -165,8 +174,11 @@ class EthicalAIChatbot:
         except Exception as e:
             return "An error occurred. Please try again." + f" (Error: {str(e)})"
 
-    def write_to_text_file(self, content, filename="response.txt"):
-        with open(filename, "a") as file:
+    def log_full_request(self, messages):
+        self.write_to_text_file(json.dumps(messages, indent=2), "messages.json", "w")
+
+    def write_to_text_file(self, content, filename="response.txt", mode="a"):
+        with open(filename, mode) as file:
             file.write(f"{content}\n")
         return filename
 
@@ -180,7 +192,7 @@ class EthicalAIChatbot:
         except Exception as e:
             return f"An error occurred while reading the file: {str(e)}"
 
-    def construct_prompt(self, request, user_id, chat_history):
+    def construct_prompt(self, request, user_id, chat_history, additional_messages = []):
         """Construct a prompt for the OpenAI API that includes ethical boundaries and core values."""
         principles = {**self.core_values, **self.mutable_values}
         prompt_lines = [f"{key}: {value}" for key, value in principles.items()]
@@ -195,20 +207,22 @@ class EthicalAIChatbot:
 
         if user_id in self.user_descriptions:
             self.variables['user'] = self.user_descriptions[user_id]
-            #self.variables['self_project'] = self.file_system_agent.get_directory_tree('.', True)
 
         messages = [
             {"role": "system",
              "content": f"You are {self.name}. Use a casual and idiomatic tone in your responses."},
-            {"role": "system",
-             "content": f"Additional variables: {json.dumps(self.variables)}"
-             },
             {
                 "role": "system",
                 "content": f"You are an ethical chatbot named {self.name}. Adhere to the following ethical guidelines:\n"
                            f"{chr(10).join(prompt_lines)}\n{special_instructions}\n",
             },
+            {"role": "system",
+             "content": f"Additional variables: {json.dumps(self.variables)}"
+             },
         ]
+
+        for message in additional_messages:
+            messages.append(message)
 
 
         for interaction in chat_history:
@@ -222,7 +236,7 @@ class EthicalAIChatbot:
                 }
                 messages.append(interaction)
             if 'request' in interaction:
-                messages.append({"role": "user", "content": interaction['request'] + interaction['time'] if 'time' in interaction else ''})
+                messages.append({"role": "user", "content": str(interaction['request'] )+ interaction['time'] if 'time' in interaction else ''})
                 messages.append({"role": "assistant", "content": interaction['response']})
 
         for world_state in self.world_states:
@@ -345,27 +359,31 @@ class EthicalAIChatbot:
         else:
             print("Command skipped.")
 
-    def execute_command(self, command):
-        """Execute the given command."""
-        try:
-            # Use subprocess to run the command
-            import subprocess
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
-
-            # Display the output of the command
-            print("Command output:")
-            print(result.stdout)
-            if result.stderr:
-                print("Error output:")
-                print(result.stderr)
-        except Exception as e:
-            print(f"An error occurred while executing the command: {str(e)}")
+    # def execute_command(self, command):
+    #     """Execute the given command."""
+    #     try:
+    #         # Use subprocess to run the command
+    #         import subprocess
+    #         result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    #
+    #         # Display the output of the command
+    #         print("Command output:")
+    #         print(result.stdout)
+    #         if result.stderr:
+    #             print("Error output:")
+    #             print(result.stderr)
+    #     except Exception as e:
+    #         print(f"An error occurred while executing the command: {str(e)}")
 
     def display_response(self, user_id, response):
         """Display the chatbot's response in a transparent and empathetic manner."""
         n = 30
-        formatted = [response[i:i + n] for i in range(0, len(response), n)]
-        print(f"{self.name}: {response}")
+        try:
+            print(f"{self.name}: {response}")
+        except Exception as e:
+            print(f"An error occurred ")
+            print(f"{self.name}: {response.encode('utf-8')}")
+
 
     def correct_error(self, user_id, correct_interaction):
         """Provide a mechanism for the chatbot to correct its errors and ensure fairness."""
@@ -377,12 +395,6 @@ class EthicalAIChatbot:
         self.chat_history.add_interaction(user_id, request, response)
         self.display_response(user_id, response)
 
-    def get_chatbot_src(self):
-        return [self.get_src(),
-                self.file_system_agent.get_src(),
-                self.user_description_agent.get_src(),
-                self.emotional_state_handler.get_src()
-                ]
 
     def get_src(self):
         """Retrieve the chatbot's own source code."""

@@ -15,7 +15,7 @@ class ChatHistory:
         """Log each interaction with the user."""
         user_history = self.get_history(user_id)
 
-        if len(json.dumps(user_history[:-5])) > 5000:
+        if len(json.dumps(user_history[:-5])) > 10000:
             self.summarize_history(user_id)
             user_history = self.get_history(user_id)
 
@@ -46,7 +46,7 @@ class ChatHistory:
                 json.dump(chat_history, file, indent=2)
             # Generate a summary of the last session
             last_session_summary = self.create_summary(chat_history)
-
+            chat_history = [a for a in filter(lambda a: not ("role" in a and a["role"] == 'system'), chat_history)]
             self.history[user_id] = chat_history[-5:]
 
             # Prepend the summary to the chat history
@@ -83,11 +83,27 @@ class ChatHistory:
         )
 
         # Return the generated summary
-        # Return the generated summary
         return summary_response.choices[0].message.content.strip()
 
     def get_users(self):
         return self.history.keys()
+
+    def format_chat_history(self, user_id):
+        """Format the chat history to a specified client format."""
+        formatted_history = []
+        for interaction in self.get_history(user_id):
+            if 'request' in interaction:
+                formatted_history.append({
+                    "role": "User",  # Default to 'User'
+                    "content": interaction.get('request', ''),
+                    "time": interaction.get('time', ''),
+                })
+                formatted_history.append({
+                    "role": "Agent",
+                    "content": interaction.get('response', ''),
+                    "time": interaction.get('time', ''),
+                })
+        return formatted_history
 
     def load(self):
         """Load previously saved user sessions from a file, if available."""

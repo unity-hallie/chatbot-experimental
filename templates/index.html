@@ -3,22 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
     <title>Ethical AI Chatbot</title>
+
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 20px;
+        }
+        #chat-box {
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 150px;
+            margin-bottom: 20px;
+            background-color: #fff;
+            overflow-y: auto; /* Makes it scrollable if content overflows */
+            max-height: 300px; /* Set a maximum height for the chat box */
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        textarea {
+            resize: none; /* Prevents resizing */
+            padding: 10px;
+            font-size: 16px;
+            height: 80px; /* Set a height for the textarea */
+        }
+        button {
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .section {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #eaeaea;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
     <h1>Chat with Guidon</h1>
     <div id="chat-box"></div>
-    <form id="form">
 
-     <input type="text" id="user-input" placeholder="Type your message here..." />
-      <button>Send</button>
+    <form id="form">
+        <textarea id="user-input" placeholder="Type your message here..."></textarea>
+        <button type="submit">Send</button>
     </form>
 
-    <script>
+    <div class="section">
+        <h2>Current World State</h2>
+        <pre id="world-state"></pre>
+    </div>
+
+    <div class="section">
+        <h2>Files</h2>
+        <pre id="files-list"></pre>
+    </div>
+
+    <script type="module">
+       import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
         async function sendMessage(e) {
-          e.preventDefault()
+            e.preventDefault();
 
             const userInput = document.getElementById('user-input').value;
+            if (!userInput.trim()) return; // Prevent empty messages
+
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: {
@@ -26,17 +79,61 @@
                 },
                 body: JSON.stringify({
                     user_id: 'user123',
-                    message: userInput
+                    message: userInput,
                 }),
             });
             const data = await response.json();
-            document.getElementById('chat-box').innerHTML += `<p>User: ${userInput}</p>`;
-            document.getElementById('chat-box').innerHTML += `<p>Guidon: ${data.response}</p>`;
-            document.getElementById('user-input').value = '';
-        }
-        const form = document.getElementById('form');
-        form.addEventListener('click', sendMessage);
 
+            document.getElementById('chat-box').innerHTML += `<p><strong>User:</strong> ${marked(userInput)}</p>`;
+            document.getElementById('chat-box').innerHTML += `<p><strong>Guidon:</strong> ${marked(data.response)}</p>`;
+            document.getElementById('user-input').value = '';
+
+            // Fetch and display the current world state
+            fetchWorldState();
+
+            // Fetch and display the list of files
+            fetchFiles();
+        }
+
+        async function fetchWorldState() {
+            const response = await fetch('/world_state');
+            const state = await response.json();
+            document.getElementById('world-state').innerText = JSON.stringify(state, null, 2);
+        }
+
+        async function fetchFiles() {
+            const response = await fetch('/files');
+            const files = await response.json();
+            document.getElementById('files-list').innerText = JSON.stringify(files, null, 2);
+        }
+
+        async function fetchChatHistory() {
+            const response = await fetch('/chat_history?user_id=user123'); // Adjust endpoint as necessary
+            const chatHistory = await response.json();
+
+            // Display the chat history
+            chatHistory.forEach(interaction => {
+                document.getElementById('chat-box').innerHTML += `<p><strong>${interaction.role}:</strong> ${interaction.content}</p>`;
+            });
+        }
+
+        const form = document.getElementById('form');
+
+        // Submit on Ctrl + Enter
+        document.getElementById('user-input').addEventListener('keydown', function(event) {
+            if (event.ctrlKey && event.key === 'Enter') {
+                event.preventDefault(); // Prevent newline
+                sendMessage(event);
+            }
+        });
+
+        form.addEventListener('submit', sendMessage);
+
+        // Fetch initial data
+        fetchWorldState();
+        fetchFiles();
+        fetchChatHistory(); // Fetch the chat history on page load
     </script>
+<h1>Herllo WEorld</h1>
 </body>
 </html>

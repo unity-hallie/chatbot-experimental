@@ -1,3 +1,5 @@
+import difflib
+import json
 import os
 import fnmatch
 import torch
@@ -5,8 +7,13 @@ from torch import cosine_similarity
 from transformers import DistilBertTokenizer, DistilBertModel
 from functools import lru_cache
 
+
 class FileSystemAgent:
     def __init__(self):
+        self.filename = None
+        self.foldername = None
+        self.initial_file_value = ""
+        self.initial_folder_value = ""
         self.tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
         self.model = DistilBertModel.from_pretrained("distilbert-base-uncased").half()  # Use half-precision
         self.open_file_phrases = ["open file", "read from file", "access document", "open directory", "open folder"]
@@ -35,12 +42,19 @@ class FileSystemAgent:
                 outputs = self.model(**inputs)
                 vectors[key] = outputs.last_hidden_state.mean(dim=1)
         return vectors
+
     @lru_cache(maxsize=128)  # Cache frequently used inputs for faster access
     def _vectorize_input(self, user_input):
         inputs = self.tokenizer(user_input, return_tensors='pt')
         with torch.no_grad():
             outputs = self.model(**inputs)
         return outputs.last_hidden_state.mean(dim=1)
+
+    def handle_request(self, request):
+        """Handle incoming requests to read or write files."""
+        if self.check_open_file(request):
+            user_input = self.ask_open(request)
+        return self.get_system_message()
 
     def check_open_file(self, user_prompt):
         """Determine if the user prompt indicates intent to open a file."""
@@ -53,9 +67,60 @@ class FileSystemAgent:
         similarities = cosine_similarity(user_vector, open_file_vector_tensor)
 
         # Check if maximum similarity is above threshold
-        if torch.max(similarities) > 0.7:  # Adjust threshold as necessary
+        if torch.max(similarities) > 0.9:  # Adjust threshold as necessary
             return True
         return False
+
+    def get_prompt_data(self):
+        file_content = self._current_file()
+        directory_content = self._current_folder()
+
+        output = {
+            "file" : {
+                "path": self.filename or "No file",
+                "content": file_content or "No content"
+            },
+            "directory" : {
+                "path" : self.foldername or "No directory",
+                "content": directory_content or "No content"
+            }
+        }
+
+        if (file_content and self.initial_file_value
+                and len(file_content) != len(self.initial_file_value)):
+            output["file"]["original_content"] = self.compute_diffs(self.initial_file_value, file_content)
+
+        if (directory_content and self.initial_folder_value
+                and len(directory_content) != len(self.initial_folder_value)):
+            output["file"]["original_content"] = self.compute_diffs(self.initial_folder_value, directory_content)
+
+        return output
+
+    def compute_diffs(self, init_state, current_state):
+        """Compute the differences between initial and current directory states."""
+
+        # Create a diff
+        diff = list(difflib.unified_diff(
+            init_state.splitlines(keepends=True),
+            current_state.splitlines(keepends=True),
+            fromfile='initial_state.json',
+            tofile='current_state.json',
+            lineterm=''
+        ))
+
+        return ''.join(diff)
+
+    def get_prompt(self):
+        out = "There are currently no files or folders in context"
+        data = self.get_prompt_data()
+        out = f"The user is currently working with these files and folders. {json.dumps(self.get_prompt_data())}"
+        return out
+
+    def get_system_message(self):
+        return {
+            "role": "user",
+            "content": self.get_prompt(),
+        }
 
     def ask_open(self, user_prompt):
         """Prompt user to select a file if specified in the user prompt."""
@@ -73,8 +138,8 @@ class FileSystemAgent:
         }
 
         best_intent = max(similarities, key=similarities.get)
-        print("Opening file dialog...")
-
+        if input(f"Do you want to open a {best_intent} (y/n)?") != 'y':
+            return False
         prompt = self._select_folder(user_prompt) if best_intent == 'folder' else self._select_file(user_prompt)
         root.destroy()
 
@@ -89,26 +154,38 @@ class FileSystemAgent:
     def _select_file(self, user_prompt):
         from tkinter.filedialog import askopenfilename
         filename = askopenfilename()  # Open the file dialog
-        if filename:
-            try:
-                with open(filename, 'r', encoding='utf-8') as file:
-                    file_content = file.read()
-                    combined_input = f"{user_prompt}\n```\n{file_content}\n```"
-                    return combined_input  # Return both prompt and file content
-            except Exception as e:
-                print(f"Error reading file: {str(e)}")
-                return user_prompt
+        self.filename = filename
+        self.initial_file_value = self._current_file()
 
-    def _select_folder(self, user_prompt):
+    def _current_file(self):
+        filename = self.filename
+        if filename is None:
+            return None
         try:
-            from tkinter.filedialog import askdirectory
-            foldername = askdirectory()
-            dir_content = self.get_directory_tree(foldername, full=True)
-            combined_input = f"{user_prompt}\n```\n{dir_content}\n```"
-            return combined_input
+            with open(filename, 'r', encoding='utf-8') as file:
+                file_content = file.read()
+                return file_content
+
         except Exception as e:
             print(f"Error reading file: {str(e)}")
-            return user_prompt
+            return f"Error reading {filename}"
+
+    def _select_folder(self, user_prompt):
+            from tkinter.filedialog import askdirectory
+            foldername = askdirectory()
+            self.foldername = foldername
+            self.initial_folder_value = self._current_folder()
+
+    def _current_folder(self):
+        try:
+            foldername = self.foldername
+            if foldername is None:
+                return None
+            dir_content = self.get_directory_tree(foldername, full=True)
+            return dir_content
+        except Exception as e:
+            print(f"Error reading file: {str(e)}")
+            return f"Error reading: {self.foldername}"
 
     def load_gitignore(self, path="."):
         """Load patterns from .gitignore file."""
@@ -142,7 +219,11 @@ class FileSystemAgent:
 
     def process_file(self, file_path, full=False):
         """Process each file: check extension, size, convert to text, and compress."""
-        if full and os.path.isfile(file_path) and file_path.endswith(('.py', '.html', '.ts', '.tsx')) and os.path.getsize(file_path) < 1 * 1024 * 1024:
+        if full and os.path.isfile(file_path) and file_path.endswith((
+                '.py','.html','.md', '.txt', '.css', '.gitignore',
+                '.ts',
+                '.tsx'
+        )) and os.path.getsize(file_path) < 1 * 1024 * 1024:
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
@@ -155,25 +236,25 @@ class FileSystemAgent:
     def compress_content(self, content):
         return content
 
-    def handle_request(self, request):
-        """Handle incoming requests to read or write files."""
-        request_analysis = self.analyze_request(request)
-        action = request_analysis.get("action")
-
-        if action == "read":
-            file_to_read = request_analysis.get("file")
-            if not file_to_read:
-                return "Error: No file specified for reading."
-            return self.read_file(file_to_read)
-
-        elif action == "write":
-            file_to_write = request_analysis.get("file")
-            content_to_write = request_analysis.get("content")
-            if not file_to_write or content_to_write is None:
-                return "Error: Insufficient arguments for writing."
-            return self.write_file(file_to_write, content_to_write)
-
-        return "Error: Unrecognized command."
+    # def handle_request(self, request):
+    #     """Handle incoming requests to read or write files."""
+    #     request_analysis = self.analyze_request(request)
+    #     action = request_analysis.get("action")
+    #
+    #     if action == "read":
+    #         file_to_read = request_analysis.get("file")
+    #         if not file_to_read:
+    #             return "Error: No file specified for reading."
+    #         return self.read_file(file_to_read)
+    #
+    #     elif action == "write":
+    #         file_to_write = request_analysis.get("file")
+    #         content_to_write = request_analysis.get("content")
+    #         if not file_to_write or content_to_write is None:
+    #             return "Error: Insufficient arguments for writing."
+    #         return self.write_file(file_to_write, content_to_write)
+    #
+    #     return "Error: Unrecognized command."
 
     def read_file(self, filename):
         """Read a file and return its contents."""
@@ -195,25 +276,24 @@ class FileSystemAgent:
         except Exception as e:
             return f"Error writing to file: {str(e)}"
 
-    def analyze_request(self, request):
-        """Analyze the user's request and return structured intent data."""
-        request = request.lower().strip()
-
-        if request.startswith("read "):
-            file_name = request[len("read "):].strip()
-            return {"action": "read", "file": file_name}
-        elif request.startswith("write "):
-            parts = request[len("write "):].strip().split(" ", 1)
-            if len(parts) < 2:
-                return {"action": "write", "file": None, "content": None}
-            file_name = parts[0]
-            content = parts[1]
-            return {"action": "write", "file": file_name, "content": content}
-        elif request.startswith("delete "):
-            file_name = request[len("delete "):].strip()
-            return {"action": "delete", "file": file_name}
-        elif request.startswith("list"):
-            return {"action": "list", "file": None}
-
-        return {"action": "unknown"}
-
+    # def analyze_request(self, request):
+    #     """Analyze the user's request and return structured intent data."""
+    #     request = request.lower().strip()
+    #
+    #     if request.startswith("read "):
+    #         file_name = request[len("read "):].strip()
+    #         return {"action": "read", "file": file_name}
+    #     elif request.startswith("write "):
+    #         parts = request[len("write "):].strip().split(" ", 1)
+    #         if len(parts) < 2:
+    #             return {"action": "write", "file": None, "content": None}
+    #         file_name = parts[0]
+    #         content = parts[1]
+    #         return {"action": "write", "file": file_name, "content": content}
+    #     elif request.startswith("delete "):
+    #         file_name = request[len("delete "):].strip()
+    #         return {"action": "delete", "file": file_name}
+    #     elif request.startswith("list"):
+    #         return {"action": "list", "file": None}
+    #
+    #     return {"action": "unknown"}

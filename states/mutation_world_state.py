@@ -45,11 +45,13 @@ class MutationWorldState:
                  update_frequency=1,
                  tokens_per_second=1,
                  update_size=100,
+                 max_history_length=10,
                  file_name='world_state.json',
                  custom_instructions="",
                  model_name='gpt-4o-mini'):
         self.update_size = update_size
         self.token_bank = 0
+        self.max_history_length = max_history_length
         self.last_token_cost = self.update_size
         self.tokens_per_second = tokens_per_second
         self.emotional_state_handler = emotional_state_handler
@@ -84,6 +86,7 @@ class MutationWorldState:
             print("Error: Could not parse world state.")
 
     def save_state(self):
+        self.state = flatten_to_nested(self.state)
         try:
             with open(f'./states/{self.file_name}', 'w') as file:
                 json.dump(self.state, file, indent=2)
@@ -121,6 +124,7 @@ class MutationWorldState:
             mutations = self.generate_mutation_from_interactions(chat_history, last_request)
             for mutation in mutations:
                 self.apply_mutation(mutation)
+
             self.update_interaction()
             self.save_state()
             return True
@@ -153,7 +157,7 @@ class MutationWorldState:
             return {}
 
     def create_mutation_prompt(self, chat_history, special_instructions=""):
-        history_length = min(len(chat_history) - 1, 5)
+        history_length = min(len(chat_history) - 1, self.max_history_length)
         """Create a prompt to suggest mutations based on user interactions."""
 
         recent_history = chat_history[-history_length:]
@@ -172,6 +176,7 @@ class MutationWorldState:
             f"Return the mutations as a list of JSON of type Mutation. Please double check "        
             f"to make sure the types of the variables being mutated are consistent. "
             f"Use no more than {self.update_size} tokens."
+            f"If the previous world state seems unweildy, make sure to prune irrelevant variables."
             "You should return ONLY a json list that conforms to type Mutation[] as in the def below"
             f"{MUTATION_TYPE_DEF}"
 
@@ -232,42 +237,35 @@ class MutationWorldState:
         self.state["recent_mutation_errors"] = errors
 
 
-# def apply_mutation(state, mutations):
-#     """Apply single-key-value changes or list modifications."""
-#     for key, value in mutations.items():
-#         targetExists = key in state
-#         targetValue = state[key] if targetExists else None
-#         if not isinstance(value, dict):
-#             state[key] = value
-#         elif "action" not in value:
-#             if key not in state:
-#                 state[key] = {}
-#             apply_mutation(state[key], value)
-#         else:
-#             if value["action"] == "+":
-#                 valueValue = value["value"]
-#                 if not isinstance(targetValue, (int, float)):
-#                     targetValue = 0
-#                 if not isinstance(valueValue, (int, float)):
-#                     targetValue = int(targetValue)
-#
-#                 state[key] = targetValue + value["value"]
-#
-#             if value["action"] == "-":
-#                 if not isinstance(targetValue, (int, float)):
-#                     targetValue = 0
-#                 state[key] = targetValue - value["value"]
-#             if value["action"] == "addYea":
-#                 # Assuming it's a list in the state
-#                 if not targetExists:
-#                     targetValue = {} if "key" in value else []
-#                 if isinstance(targetValue, list):
-#                     targetValue.append(value["value"])  # Add item to the list
-#                     state[key] = targetValue
-#                 elif isinstance(targetValue, dict) and "key" in value:
-#                     targetValue[value["key"]] = value["value"]
-#                     state[key] = targetValue
-#             elif value["action"] == "remove":
-#                 if key in state and value["value"] in state[key]:
-#                     state[key].remove(value["value"])  # Remove item from the list
-#
+def flatten_to_nested(flat_dict):
+    nested_dict = {}
+
+    for key, value in flat_dict.items():
+        keys = key.split('.')
+        parent = None
+        d = nested_dict
+        last_part = None
+        for part in keys[:-1]:
+            if part not in d:
+                if isinstance(d, dict):
+                    d[part] = {}
+                else:
+                    d = {
+                        '_' : d,
+                        part: {}
+                    }
+            parent = d
+            last_part = part
+            d = d[part]
+
+        if isinstance(d, dict):
+            d[keys[-1]] = value
+        elif isinstance(d, list):
+            d.append(value)
+        else:
+            parent[last_part] = {
+                "_" : d,
+                keys[-1]: value,
+            }
+
+    return nested_dict
