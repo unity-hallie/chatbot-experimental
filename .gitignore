@@ -28,3 +28,5 @@ response.txt
 .idea/
 /.venv/
 COMMIT_MSG
+/config/*
+/sandbox/*

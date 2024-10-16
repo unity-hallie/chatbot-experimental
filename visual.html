@@ -1,59 +1,205 @@
-<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
-  <style>
-    .cell {
-      fill: #d5e6f2;
-      stroke: #8ab1f9;
-      stroke-width: 4;
-    }
-    .organelle {
-      fill: #ffcc80;
-      stroke: #f57c00;
-      stroke-width: 2;
-    }
-    .nucleus {
-      fill: #fff176;
-      stroke: #fbc02d;
-      stroke-width: 2;
-    }
-    .label {
-      font-family: Arial, sans-serif;
-      font-size: 14px;
-      fill: #424242;
-    }
-    .spline {
-      fill: none;
-      stroke: #757575;
-      stroke-width: 2;
-      stroke-dasharray: 5, 5;
-    }
-  </style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaltura Migration Interface - Enhanced Wireframe</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+        }
+        button {
+            margin: 10px 0;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            padding: 10px 20px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background: #f2f2f2;
+        }
+        .progress {
+            height: 20px;
+            background-color: #f2f2f2;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #28a745;
+        }
+        .accordion {
+            margin-top: 0;
+        }
+        .accordion-item {
+            border: 1px solid #ddd;
+            margin-top: 5px;
+            padding: 10px;
+        }
+        .accordion-header {
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        .accordion-content {
+            display: none;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Kaltura Migration Interface</h1>
 
-  <!-- Cell Outline -->
-  <ellipse cx="400" cy="300" rx="300" ry="200" class="cell" />
+        <h2>Pages and Assignments</h2>
+        <button onclick="scanAllItems()">Scan All</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Error</th>
+                    <th>Action</th>
+                    <th>Progress</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Page 1</td>
+                    <td>Pending</td>
+                    <td>N/A</td>
+                    <td><button onclick="scanItem('Page 1')">Scan</button></td>
+                    <td>
+                        <div class="progress"><div class="progress-bar" style="width: 0%;"></div></div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Assignment 1</td>
+                    <td>Pending</td>
+                    <td>N/A</td>
+                    <td><button onclick="scanItem('Assignment 1')">Scan</button></td>
+                    <td>
+                        <div class="progress"><div class="progress-bar" style="width: 0%;"></div></div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Assignment 2</td>
+                    <td>Finalized</td>
+                    <td>N/A</td>
+                    <td>
+                        <button onclick="finalizeMigration('Assignment 2')">Finalize Migration</button>
+                        <button onclick="showPreview('Assignment 2')">Preview</button>
+                    </td>
+                    <td>
+                        <div class="progress"><div class="progress-bar" style="width: 100%;"></div></div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Assignment 3</td>
+                    <td>Successful</td>
+                    <td>N/A</td>
+                    <td>
+                        <button onclick="showLinks('Assignment 3')">Show Links</button>
+                        <button onclick="showPreview('Assignment 3')">Preview</button>
+                    </td>
+                    <td>
+                        <div class="progress"><div class="progress-bar" style="width: 100%;"></div></div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
 
-  <!-- Nucleus -->
-  <ellipse cx="400" cy="300" rx="100" ry="70" class="nucleus" />
-  <text x="400" y="300" text-anchor="middle" dominant-baseline="middle" class="label">Nucleus</text>
+        <!-- Accordion for Affected Links directly under each row -->
+        <div class="accordion">
+            <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion('assignment2Links')">
+                    Links for Assignment 2
+                </div>
+                <div class="accordion-content" id="assignment2Links">
+                    <p>Link to Video 1</p>
+                    <p>Link to Video 2</p>
+                    <p>Preview Updated HTML: <span id="previewAssignment2"></span></p>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion('assignment3Links')">
+                    Links for Assignment 3
+                </div>
+                <div class="accordion-content" id="assignment3Links">
+                    <p>Link to Final Video</p>
+                    <p>Preview Updated HTML: <span id="previewAssignment3"></span></p>
+                </div>
+            </div>
+        </div>
 
-  <!-- Mitochondria -->
-  <ellipse cx="250" cy="350" rx="30" ry="20" class="organelle" />
-  <text x="250" y="350" text-anchor="middle" dominant-baseline="middle" class="label">Mitochondrion</text>
+        <script>
+            function scanItem(itemTitle) {
+                console.log(`Scanning ${itemTitle}...`);
+                // Logic to update status based on scan result
+            }
 
-  <ellipse cx="550" cy="250" rx="30" ry="20" class="organelle" />
-  <text x="550" y="250" text-anchor="middle" dominant-baseline="middle" class="label">Mitochondrion</text>
+            function scanAllItems() {
+                console.log("Scanning all items...");
+                // Logic to scan all items and update the list
+            }
 
-  <!-- Golgi Apparatus -->
-  <path d="M 300,450 Q 340,400 380,450 Q 340,500 300,450" class="organelle" />
-  <text x="340" y="465" text-anchor="middle" class="label">Golgi Apparatus</text>
+            function finalizeMigration(itemTitle) {
+                console.log(`Finalizing migration for ${itemTitle}...`);
+                // Logic to finalize migration and show previews
+            }
 
-  <!-- Endoplasmic Reticulum -->
-  <path d="M 200,400 Q 230,370 260,400 Q 230,430 200,400 Z" class="organelle" />
-  <text x="230" y="390" text-anchor="middle" class="label">Er</text>
+            function showLinks(assignmentTitle) {
+                console.log(`Showing links for ${assignmentTitle}...`);
+            }
 
-  <path d="M 540,370 Q 570,340 600,370 Q 570,400 540,370 Z" class="organelle" />
-  <text x="570" y="390" text-anchor="middle" class="label">Er</text>
+            function showPreview(title) {
+                console.log(`Showing preview for ${title}...`);
+                let previewContent = `<div>HTML content for ${title}</div>`;
+                if (title === 'Assignment 2') {
+                    document.getElementById('previewAssignment2').innerHTML = previewContent;
+                } else if (title === 'Assignment 3') {
+                    document.getElementById('previewAssignment3').innerHTML = previewContent;
+                }
+            }
 
-  <!-- Splines -->
-  <path d="M 400,300 C 350,340 250,400 300,450" class="spline" />
-  <path d="M 400,300 C 450,340 550,400 500,450" class="spline" />
-</svg>
+            function toggleAccordion(id) {
+                const content = document.getElementById(id);
+                content.style.display = content.style.display === 'block' ? 'none' : 'block';
+            }
+        </script>
+    </div>
+</body>
+</html>

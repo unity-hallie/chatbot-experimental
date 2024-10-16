@@ -4,21 +4,23 @@ import os
 import fnmatch
 import re
 import subprocess
+import threading
+import weakref
 
 import torch
 from torch import cosine_similarity
 from transformers import DistilBertTokenizer, DistilBertModel
 from functools import lru_cache
-
-import chatbot
 from components.file_system_component import FileSystemComponent
 
 
 class FileSystemAgent:
-    def __init__(self, openai, working_directory = '.'):
+    def __init__(self, openai, chatbot, file_system):
         self.openai = openai
+        self.chatbot_weakref = weakref.ref(chatbot)
         self.filename = None
-        self.file_system = FileSystemComponent(openai, working_directory)
+        self.file_system = file_system
+        self.lock = threading.Lock()
         self.tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
         self.model = DistilBertModel.from_pretrained("distilbert-base-uncased").half()  # Use half-precision
         self.open_file_phrases = ["open file", "read from file", "access document", "open directory", "open folder"]
@@ -28,6 +30,18 @@ class FileSystemAgent:
         }
         self.intent_vectors = self._vectorize_intents(self.intent_phrases)
         self.open_file_vectors = self._vectorize_phrases(self.open_file_phrases)
+
+
+    def change_directory(self, dir_name):
+        with self.lock:  # Lock to prevent race conditions
+            new_path = os.path.join(self.working_directory, dir_name)
+            if os.path.isdir(new_path):
+                self.working_directory = new_path
+                print(f"Changed directory to {self.working_directory}")
+                return f"Changed directory to {self.working_directory}"
+            else:
+                print(f"Directory {new_path} not found.")
+                return "Directory not found."
 
     def fill_in_command(self, user_id, request, openai, chat_history):
         """Generate responses using OpenAI API while adhering to ethical principles."""
@@ -57,22 +71,6 @@ class FileSystemAgent:
         except Exception as e:
             print(e)
             return e
-
-    def execute_command(self, command):
-        """Executes a given command in the Windows shell and returns the output."""
-        path = self.file_system.working_directory
-        try:
-            # Use subprocess to execute the command
-            print(f"Executing command: {command} in {path}")  # Debug output
-            result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=path)
-
-            # Return stdout or handle errors
-            if result.returncode == 0:
-                return result.stdout.strip()  # Return the command output
-            else:
-                return f"Error: {result.stderr.strip()}"  # Return error message if any
-        except Exception as e:
-            return f"An error occurred while executing the command: {str(e)}"
 
     def _vectorize_phrases(self, phrases):
         # Batch tokenization and processing for efficiency

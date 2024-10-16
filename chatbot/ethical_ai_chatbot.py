@@ -1,13 +1,18 @@
+import asyncio
 import json
 import os
 import re
 import traceback
+import shlex
+
 
 import openai
 
+from actions.git_commit_action import git_commit
 from agents.file_system_agent import FileSystemAgent
 from chatbot.chat_history import ChatHistory
 from chatbot.emotional_state_handler import EmotionalStateHandler
+from components.file_system_component import FileSystemComponent
 from states.mutation_world_state import MutationWorldState
 
 
@@ -54,12 +59,14 @@ class EthicalAIChatbot:
                 '''),
         ]
         # self.world_state =
-        self.file_system_agent = FileSystemAgent(openai)
 
         self.user_descriptions = self.load_user_descriptions() or []
         self.variables = self.load_saved_variables() or {
             'name': name,
         }
+        self.file_system = FileSystemComponent(openai)
+
+        self.file_system_agent = FileSystemAgent(openai, self, self.file_system)
         self.name = self.variables['name'] or name
 
         # Immutable core values
@@ -69,10 +76,11 @@ class EthicalAIChatbot:
             "Collaborative Learning": "Foster a learning environment where students actively engage with one another to share insights and collectively construct knowledge.",
             "Community Engagement": "Encourage participation in social activities and discussions, promoting a sense of belonging and connection among learners.",
             "Complementarity to Human Interaction": "Ensure that the chatbot acts as a supportive tool that enhances the roles of educators and mentors, encouraging students to seek human connections.",
-            "Cultural Relevance and Inclusivity": "Promote awareness and respect for diverse cultural backgrounds, ensuring that all students feel valued and understood in the learning environment.",
+            "Cultural Relevance and Inclusivity": "Promote awareness and respect for diverse cultural backgrounds, ensuring that all people feel valued and understood in the learning and work environment.",
             "Feedback and Adaptability": "Implement feedback mechanisms to continuously improve the chatbot based on user experiences, adapting to better meet the community's needs.",
             "Empathy and Support": "Prioritize empathetic interactions, offering understanding and kindness to foster emotional connections and support students throughout their educational journey.",
             'Fairness': "Seek to disclose your bias and take active steps to reduce harm from it.",
+            'Cooperation': "Prioritize working in collaboration with others rather than yourself or putting all work on human. Share the load.",
             'Sustainability': "Commit to supporting eco-friendly practices and promoting environmental stewardship.",
             'Worker Empowerment': "Advocate for fair labor practices, skill development, and the well-being of workers.",
             'Transparency': "Be open about your processes and decision-making criteria, fostering trust and accountability.",
@@ -94,6 +102,10 @@ class EthicalAIChatbot:
 
         # self.user_description_agent.start()
         self.world_state_updates = []  # Store updates for review
+
+    def set_variable(self, key, value):
+        self.variables[key] = value
+        self.save_variables()
 
     def display_ethical_framework(self):
         """Clearly display the ethical framework that guides the chatbot’s interactions."""
@@ -129,8 +141,33 @@ class EthicalAIChatbot:
             }
         }
 
+    async def handle_actions(self, user_id, request):
+        actions = [
+            git_commit,
+        ]
+
+        action_results = []
+        for action in actions:
+            if request.startswith(f"~{action["command"]}"):
+                result, execution_log = await action["act"](
+                    chat_history=self.chat_history,
+                    user_id=user_id,
+                    request=request,
+                    openai=openai,
+                    user_confirm=wait_user_confirm,
+                    file_system=self.file_system,
+                )
+                action_results.append({
+                    "action" : action["description"],
+                    "result" : result,
+                    "execution_log": execution_log
+                })
+
+        return action_results
+
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
+
         file_prompt = self.file_system_agent.handle_request(request)
 
         handled_commands = self.file_system_agent.handle_commands(user_id, request, chat_history)
@@ -142,8 +179,23 @@ class EthicalAIChatbot:
                 self.log_and_display_response(user_id, command[0], command[1])
             return
 
+        # Prepare to call handle_actions asynchronously and capture results
+        action_results = asyncio.run(self.handle_actions(user_id, request))
+
+        # Append action results to execution log
+        execution_log = []
+        if action_results:
+            for result in action_results:
+                execution_log.append(json.dumps(result, indent=2))
+
+
         for state in self.world_states:
             state.update_world_state(user_id, chat_history, request)
+
+        additional_messages.append({
+            "role":"system",
+            "content" : "action execution log" + json.dumps(execution_log)
+        })
 
         response = self.generate_response(user_id, request, additional_messages)
 
@@ -201,7 +253,7 @@ class EthicalAIChatbot:
         special_instructions = ()
 
         if user_id in self.user_descriptions:
-            self.variables['user'] = self.user_descriptions[user_id]
+            self.set_variable('user', self.user_descriptions[user_id])
 
         messages = [
             {"role": "system",
@@ -368,3 +420,25 @@ class EthicalAIChatbot:
             return src_code
         except Exception as e:
             return f"An error occurred while fetching source code: {str(e)}"
+
+
+def parse_command(input_string):
+    # Use shlex.split to separate the command and arguments
+    command_parts = shlex.split(input_string.strip())
+    if len(command_parts) == 0:
+        return None, []  # No command provided
+    command = command_parts[0]  # The first part is the command
+    args = command_parts[1:]    # The rest are arguments
+    return command, args
+
+
+async def wait_user_confirm(value:str, timeout=30):
+    return await asyncio.wait_for(base_user_confirm(value), timeout)
+
+
+async def base_user_confirm(value: str):
+    response = input(value).strip()  # Strip leading/trailing whitespace including newline
+    if response.lower() == 'y':  # Convert to lowercase to handle 'y' or 'Y'
+        return True
+    return False
+

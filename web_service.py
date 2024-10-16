@@ -36,35 +36,40 @@ def chat_history():
 def get_files():
     """Return the current files in the user directory."""
     user_directory = '.'  # You can specify a different directory if needed
-    directory_tree = bot.file_system_agent.get_directory_tree(user_directory, full=True)
+    directory_tree = bot.file_system_agent.file_system.current_directory_tree(full=True)
     return jsonify(directory_tree)
 
 @app.route('/user_directory', methods=['GET'])
 def get_user_directory():
     """Return the user's directory information."""
     user_directory = '.'  # Specify the user's directory or path here
-    directory_tree = bot.file_system_agent.get_directory_tree(user_directory, full=True)
+    directory_tree = bot.file_system_agent.file_system.current_directory_tree(full=True)
     return jsonify(directory_tree)
 
 
 
 def sanitize_input(user_input):
-    # Step 1: Handle encoding issues
+    # Handle encoding issues
     try:
         sanitized = user_input.encode('utf-8').decode('utf-8')
     except UnicodeDecodeError:
         return ""  # Invalid input handles
 
-    # Step 2: Remove script tags and strip unwanted characters
+    # Remove script tags and strip unwanted characters
     sanitized = re.sub(r'<[^>]*>', '', sanitized)  # Strip out any HTML
-    sanitized = re.sub(r'[^a-zA-Z0-9\s.,!?\'\"-]', '', sanitized)  # Only allow certain characters
+    sanitized = re.sub(r'[^a-zA-Z0-9\s.,!?\'\"-]', '', sanitized)  # Allow specific characters only
 
-    # Step 3: Limit input length
+    # Limit input length
     max_length = 500
     if len(sanitized) > max_length:
         sanitized = sanitized[:max_length]
 
+    # Additional checks if necessary
+    if not sanitized.strip():
+        return ""  # Reject empty command
+
     return sanitized
+
 
 
 if __name__ == "__main__":

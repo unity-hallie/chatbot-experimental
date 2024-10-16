@@ -1,16 +1,39 @@
 import difflib
 import fnmatch
+import json
 import os
 import subprocess
+import weakref
 from datetime import datetime
 
 
 class FileSystemComponent:
-
-    def __init__(self, openai, working_directory='.'):
+    def __init__(self, openai, config_path='./config/fsc_config.json'):
         self.openai = openai
-        self.working_directory = working_directory
+        self.metadata_cache = {}
+        self.content_cache = {}
+        self.config_path = config_path
+        self.settings = self.load_json(config_path) or {
+            'cwd' : './sandbox'
+        }
+        self.working_directory = self.settings.get('cwd', './sandbox')
         self.gitignore_patterns = self.load_gitignore(self.working_directory)
+
+
+
+    def save_settings(self):
+        self.write_file(self.config_path, json.dumps(self.settings, indent=2))
+
+    def load_json(self, path):
+        """Load previously saved variables from a file, if available."""
+        try:
+            with open(path, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return None  # Return None if no saved file exists
+        except json.JSONDecodeError:
+            print("Error: Could not parse saved variables.")
+            return None
 
     def open_file(self, file_path):
         # Implement file opening logic
@@ -32,6 +55,8 @@ class FileSystemComponent:
         new_path = os.path.join(self.working_directory, dir_name)
         if os.path.isdir(new_path):
             self.working_directory = new_path
+            self.settings["cwd"] = new_path
+            self.save_settings()
             print(f"Changed directory to {self.working_directory}")
             return f"Changed directory to {self.working_directory}"
         else:
@@ -53,7 +78,7 @@ class FileSystemComponent:
             else:
                 metadata = self.get_file_metadata(item_path)  # Get metadata
                 directory_tree[item] = {
-                    'content': self.process_file(item_path, full),
+                    'content': self.process_file(item_path, metadata, full),
                     'metadata': metadata  # Include metadata in the return
                 }
         return directory_tree
@@ -61,23 +86,35 @@ class FileSystemComponent:
     def get_file_metadata(self, file_path):
         """Retrieve metadata for the specified file."""
         try:
+            cached = self.metadata_cache.get(file_path)
+            modified_time =os.path.getmtime(file_path)
+
+            if cached and modified_time <= cached["modified_time"]:
+                cached["from_cache"] = True
+                return cached
+
             file_info = {
                 'size': os.path.getsize(file_path),  # Size in bytes
                 'git': self.get_git_history(file_path),
-                'modified_time': os.path.getmtime(file_path),  # Last modified time
+                'modified_time': modified_time,  # Last modified time
                 'created_time': os.path.getctime(file_path),  # Creation time
                 'extension': os.path.splitext(file_path)[1],  # File extension
                 'is_hidden': file_path.startswith('.'),  # Check if the file is hidden
                 'modified_time_iso': datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),  # ISO format
                 'created_time_iso': datetime.fromtimestamp(os.path.getctime(file_path)).isoformat(),  # ISO format
+                'from_cache': False,
             }
+            self.metadata_cache[file_path] = file_info
             return file_info
         except Exception as e:
             print(f"Error retrieving metadata for {file_path}: {e}")
             return {}
 
-    def process_file(self, file_path, full=False):
+    def process_file(self, file_path, metadata, full=False):
         """Process each file: check extension, size, convert to text, and compress."""
+        if metadata['from_cache'] and file_path in self.content_cache:
+            return self.content_cache[file_path]
+
         if full and os.path.isfile(file_path) and file_path.endswith((
                 '.py', '.html', '.md', '.txt', '.css', '.gitignore',
                 '.ts', '.tsx'
@@ -155,6 +192,7 @@ class FileSystemComponent:
 
     def get_git_history(self, file_path):
         """Fetch a summary of git history for a specified file."""
+        print("getting git history for", file_path)
         try:
             # Run the git log command and capture the output
             result = subprocess.run(
@@ -168,3 +206,19 @@ class FileSystemComponent:
         except subprocess.CalledProcessError as e:
             print(f"Error fetching git history: {e}")
             return "No git history found."
+
+    def execute_command(self, command):
+        """Executes a given command in the Windows shell and returns the output."""
+        path = self.working_directory
+        try:
+            # Use subprocess to execute the command
+            print(f"Executing command: {command} in {path}")  # Debug output
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=path)
+
+            # Return stdout or handle errors
+            if result.returncode == 0:
+                return result.stdout.strip()  # Return the command output
+            else:
+                return f"Error: {result.stderr.strip()}"  # Return error message if any
+        except Exception as e:
+            return f"An error occurred while executing the command: {str(e)}"
