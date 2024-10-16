@@ -1,21 +1,22 @@
 # Ethical AI Chatbot
 
 ## Overview
-This project implements an ethical AI chatbot named **Guidon**, designed to interact with users while adhering to ethical guidelines. The chatbot utilizes various agents to manage file systems, analyze user interactions, and maintain a history of conversations, all while providing personalized responses and support.
+This project implements an ethical AI chatbot named **Eleanor** (formerly Guidon), designed to interact with users while upholding stringent ethical guidelines. The chatbot utilizes various agents to manage file systems, analyze user interactions, and maintain conversation history, providing personalized responses and support.
 
 ## Features
 - Multi-agent architecture for handling different tasks, including file operations and user description updates.
-- Emotional state analysis to provide empathetic responses.
-- Persistent user history and descriptions for improved customization.
-- File system management capabilities.
-- Web interface to interact with the chatbot efficiently.
+- Emotional state analysis to provide empathetic responses, enhancing user engagement.
+- File system management capabilities, allowing dynamic handling of user requests.
+- Ability to open folders or directories from command line requests, launching a file browser for user navigation.
+- A web interface to interact with the chatbot efficiently (please note: the web interface is currently very janky).
 - Support for Markdown display in chat history for better formatting.
+- Command processing using `~git_commit` for handling Git commits.
 
 ## Getting Started
 
 ### Prerequisites
 - Python 3.6 or higher.
-- [Node.js](https://nodejs.org/) (for the front-end part).
+- [Node.js](https://nodejs.org/) (for front-end functionality).
 - [OpenAI API key](https://platform.openai.com/signup/) (required for AI functionality).
 
 ### Installation
@@ -27,13 +28,13 @@ This project implements an ethical AI chatbot named **Guidon**, designed to inte
     ```
 
 2. **Install Required Packages**:
-    Make sure you have `pip` installed, then run:
+   Make sure you have `pip` installed, then run:
     ```bash
     pip install -r requirements.txt
     ```
 
 3. **Set Up Environment Variables**:
-    Create a `.env` file in the project root directory with your OpenAI API key:
+   Create a `.env` file in the project root directory with your OpenAI API key:
     ```plaintext
     OPENAI_API_KEY=your_api_key_here
     ```
@@ -51,27 +52,35 @@ This project implements an ethical AI chatbot named **Guidon**, designed to inte
     ```
 
 ### Usage
-You can interact with the chatbot by typing messages in the chat box on the web interface. The chatbot is designed to handle various requests, including file operations or general inquiries.
+You can interact with the chatbot by typing messages in the chat box on the web interface. The chatbot is designed to handle various requests, including file operations or general inquiries. 
+
+When you request to open a folder or directory from the command line, the chatbot will launch a file browser, allowing you to change the current working directory.
+
+### Tilde Command Usage
+- **Single Command**: Prepend your command with `~`. Example: `~git_commit` for committing changes in Git.
+- **Double Tilde**: Prepend your command with `~~` for executing commands with user input confirmation.
+- **Triple Tilde**: Use `~~~` for commands enhanced with AI suggestions.
+
+### Command Breakdown
+#### `~git_commit`
+This command handles Git commit operations by:
+- Adding staged changes.
+- Fetching diffs and dynamically generating commit messages based on recent changes.
+- Requesting user confirmation before executing the commit.
 
 ### Known Limitations
-- Currently, the **user-facing logic for file commands** related to reading and writing files is disabled to avoid inconsistencies in request handling. This functionality is planned for future integration after further testing and refinement.
+- The **user-facing logic for file commands** related to reading and writing files is disabled to avoid inconsistencies in request handling. This functionality is planned for future integration after further testing and refinement.
+- The web interface is currently described as "very janky" and will require improvements for better usability.
 
-### Example Interactions
-- User: "Can you help me with my Kaltura updates?"
-- Chatbot: "Of course! What specifically would you like to know about Kaltura?"
+### User Engagement and Emotional Intelligence
+- The chatbot tracks emotional states and user engagement to provide contextually aware interactions, ensuring a supportive user experience.
 
-## Contributing
-Contributions are welcome! If you have any ideas, bug fixes, or enhancements, please feel free to open a pull request.
+## NOTE
+- To delete logs, empty the logs folder, delete json files in base folder and states folder
 
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgements
-- Special thanks to the developers of the libraries used in this project:
-  - [Flask](https://flask.palletsprojects.com/)
-  - [OpenAI](https://platform.openai.com/)
-  - [Transformers](https://huggingface.co/transformers/)
+## Conclusion
+This README outlines the user interactions and functionalities of the Ethical AI Chatbot, ensuring clarity on current capabilities and how they align with ethical considerations.
 
----
-This readme was generated using this project.
-Feel free to reach out if you have questions or need further assistance with the chatbot!
+--- 
+Feel free to reach out if you have further revisions or anything else you'd want to address prior to the commit! 😊

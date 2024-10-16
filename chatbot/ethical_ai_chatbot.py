@@ -17,7 +17,7 @@ from states.mutation_world_state import MutationWorldState
 
 
 class EthicalAIChatbot:
-    def __init__(self, name="Wonderous Willow"):
+    def __init__(self, name="Eleanor"):
         self.api_key = os.getenv("OPENAI_API_KEY")  # Load key from environment variable
         openai.api_key = self.api_key
         self.shared_files = []

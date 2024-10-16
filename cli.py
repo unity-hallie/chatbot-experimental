@@ -10,7 +10,7 @@ load_dotenv()
 
 # Create Flask app
 app = Flask(__name__)
-bot = EthicalAIChatbot(name="Guidon")
+bot = EthicalAIChatbot(name="Eleanor")
 
 @app.route('/')
 def index():
