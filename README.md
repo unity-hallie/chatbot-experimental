@@ -20,36 +20,40 @@ This project implements an ethical AI chatbot named **Eleanor** (formerly Guidon
 - [OpenAI API key](https://platform.openai.com/signup/) (required for AI functionality).
 
 ### Installation
-
 1. **Clone the repository**:
-    ```bash
-    git clone https://github.com/unity-hallie/chatbot-experimental.git
-    cd chatbot-experimental
-    ```
-
+   ```bash
+   git clone https://github.com/unity-hallie/chatbot-experimental.git
+   cd chatbot-experimental
+   ```
+   
 2. **Install Required Packages**:
-   Make sure you have `pip` installed, then run:
-    ```bash
-    pip install -r requirements.txt
-    ```
+   Run:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 3. **Set Up Environment Variables**:
    Create a `.env` file in the project root directory with your OpenAI API key:
-    ```plaintext
-    OPENAI_API_KEY=your_api_key_here
-    ```
+   ```plaintext
+   OPENAI_API_KEY=your_api_key_here
+   ```
 
 4. **Run the Application**:
-    To start the chatbot in a web interface, run:
-    ```bash
-    python web_service.py
-    ```
+   To start the chatbot in the Command Line Interface (CLI), run:
+   ```bash
+   python cli.py
+   ```
+   While the web interface is also available, it is currently under development and may not provide the best user experience.
 
-5. **Access the Web Interface**:
-    Open your web browser and go to:
-    ```plaintext
-    http://127.0.0.1:5000
-    ```
+5. **Web Interface Usage**:
+   If you prefer to use the web interface, run:
+   ```bash
+   python web_service.py
+   ```
+   Then, open your web browser and go to:
+   ```plaintext
+   http://127.0.0.1:5000
+   ```
 
 ### Usage
 You can interact with the chatbot by typing messages in the chat box on the web interface. The chatbot is designed to handle various requests, including file operations or general inquiries. 
