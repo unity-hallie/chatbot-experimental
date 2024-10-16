@@ -28,7 +28,6 @@ class ChatHistory:
         }
         user_history.append(interaction)
         self.history[user_id] = user_history
-        print(self.history[user_id])
         self.save()
 
     def get_history(self, user_id):

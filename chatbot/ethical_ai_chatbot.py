@@ -1,13 +1,11 @@
 import json
 import os
 import re
-import subprocess
 import traceback
 
 import openai
 
 from agents.file_system_agent import FileSystemAgent
-from agents.user_description_agent import UserDescriptionAgent
 from chatbot.chat_history import ChatHistory
 from chatbot.emotional_state_handler import EmotionalStateHandler
 from states.mutation_world_state import MutationWorldState
@@ -28,18 +26,35 @@ class EthicalAIChatbot:
                 tokens_per_second=1,
                 update_size=1000,
                 file_name="incremental_world_state.json",
-                custom_instructions="This is the stable view of the current world state. It should represent the world as it actually is generally."),
+                custom_instructions=
+                "This is the stable view of the current world state."
+                " It should represent the world as it actually is generally."),
             MutationWorldState(
                 self.emotional_state_handler,
-                tokens_per_second=500,
+                tokens_per_second=10,
                 update_size=500,
                 max_history_length=1,
                 file_name="topic_state.json",
-                custom_instructions="This is the view of the topics being discussed. "
-                                    " It should reflect the CURRENT conversational topics. If something isn't being discussed, backburner it and move the currently discussed topic to the fore. Use this to keep track of different topics we may be switching between and try to keep it relatively lean."),
+                custom_instructions=
+                "This is the view of the topics being discussed. "
+                " It should reflect the CURRENT conversational topics. "
+                "If something isn't being discussed, backburner it and move the currently discussed topic to the fore."
+                " Use this to keep track of different topics we may be switching between and try to keep it relatively lean."
+                '''use the structure: 
+                {
+                    current_topic: { },
+                    nested_topic_stack: [],
+                    previous_topic_stack: [], //max size 5
+                }
+                
+                each topic should be {
+                    short_description: string,
+                    {5 string: string pairs of short strings}
+                }
+                '''),
         ]
         # self.world_state =
-        self.file_system_agent = FileSystemAgent()
+        self.file_system_agent = FileSystemAgent(openai)
 
         self.user_descriptions = self.load_user_descriptions() or []
         self.variables = self.load_saved_variables() or {
@@ -80,7 +95,6 @@ class EthicalAIChatbot:
         # self.user_description_agent.start()
         self.world_state_updates = []  # Store updates for review
 
-
     def display_ethical_framework(self):
         """Clearly display the ethical framework that guides the chatbot’s interactions."""
         print("Ethical Framework:")
@@ -115,64 +129,17 @@ class EthicalAIChatbot:
             }
         }
 
-    def extract_commands(self, request):
-        """Extract commands and associated data from a request."""
-        pattern = r'```(\w+)\n(.*?)```'  # Matches commands within triple backticks
-        matches = re.findall(pattern, request, re.DOTALL)
-        commands = [{ 'cmd_type': cmd_type, 'data': data.strip() } for cmd_type, data in matches]
-        return commands
-
-    def handle_commands(self, user_id, request, chat_history):
-        if self.user_interaction_mode == "CLI" and request.startswith('~~'):
-            history = self.chat_history.get_history(user_id)
-            command_results = []
-            if request.startswith('~~~'):
-
-                request_command = request[3:].strip()  # Strip '~~~'
-                updated_command = self.file_system_agent.fill_in_command(user_id, request_command, openai, history)
-
-                if '```' in updated_command:  # Check for code snippets
-                    # Extract bash/PowerShell commands from the request
-                    commands = self.extract_commands(updated_command)
-                    for command in commands:
-
-                        if input(f"Do you want to run the command? (y/n) {updated_command}") == 'y':
-                            command_result = self.file_system_agent.execute_command(command["data"])
-                            print(command_result)
-                            command_results.append([command, command_result])
-                        else:
-                            break
-                    self.chat_history.add_interaction(user_id, request, json.dumps(command_results))
-
-            else:
-                command =  request[2:].strip()  # Strip '~~'
-                if input(f"Do you want to run the command? (y/n) {command}") == 'y':
-                    print(command)
-                    command_results = [command, self.file_system_agent.execute_command(command)]
-                    self.chat_history.add_interaction(user_id, request, json.dumps(command_results))
-                    self.chat_history.save()
-                    print(command_results[1])
-                    print(json.dumps(command_results))
-
-            # Prepare the prompt with command and its result
-            prompt = f"Executed Commands: {json.dumps(command_results)}"
-
-            return {
-                "role" : "user",
-                "content" : prompt
-            }
-        return None
-
     def handle_request(self, user_id, request):
         chat_history = self.get_chat_history(user_id)
         file_prompt = self.file_system_agent.handle_request(request)
 
-        handled_commands = self.handle_commands(user_id, request, chat_history)
+        handled_commands = self.file_system_agent.handle_commands(user_id, request, chat_history)
 
         additional_messages = [file_prompt]
 
         if handled_commands:
-            self.log_and_display_response(user_id, request, json.dumps(handled_commands))
+            for command in handled_commands:
+                self.log_and_display_response(user_id, command[0], command[1])
             return
 
         for state in self.world_states:
@@ -180,17 +147,14 @@ class EthicalAIChatbot:
 
         response = self.generate_response(user_id, request, additional_messages)
 
-        self.log_and_display_response(user_id, request, json.dumps(response))
+        self.log_and_display_response(user_id, request, response)
 
     def set_user_mode(self, mode):
         """Sets the user interaction mode ('CLI' or 'Web')."""
         if mode in ["CLI", "Web"]:
             self.user_interaction_mode = mode
 
-
-
-
-    def generate_response(self, user_id, request, additional_messages = []):
+    def generate_response(self, user_id, request, additional_messages=[]):
         """Generate responses using OpenAI API while adhering to ethical principles."""
         chat_history = self.get_chat_history(user_id)
         chat_prompt = self.construct_prompt(request, user_id, chat_history, additional_messages)
@@ -228,8 +192,7 @@ class EthicalAIChatbot:
         except Exception as e:
             return f"An error occurred while reading the file: {str(e)}"
 
-
-    def construct_prompt(self, request, user_id, chat_history, additional_messages = []):
+    def construct_prompt(self, request, user_id, chat_history, additional_messages=[]):
         """Construct a prompt for the OpenAI API that includes ethical boundaries and core values."""
         principles = {**self.core_values, **self.mutable_values}
         prompt_lines = [f"{key}: {value}" for key, value in principles.items()]
@@ -258,8 +221,6 @@ class EthicalAIChatbot:
              },
         ]
 
-
-
         for interaction in chat_history:
             if "role" in interaction and interaction["role"] == "system":
                 content = interaction["content"] if "content" in interaction else ''
@@ -267,15 +228,18 @@ class EthicalAIChatbot:
                     content += '\n' + interaction['time']
                 message = {
                     "role": "system",
-                    "content" : content
+                    "content": content
                 }
                 messages.append(interaction)
             if 'request' in interaction:
-                messages.append({"role": "user", "content": str(interaction['request'] )+ interaction['time'] if 'time' in interaction else ''})
+                messages.append({"role": "user", "content": str(interaction['request']) + interaction[
+                    'time'] if 'time' in interaction else ''})
                 messages.append({"role": "assistant", "content": interaction['response']})
 
         for world_state in self.world_states:
-            messages.append({"role": "system", "content": world_state.custom_instructions + " " + json.dumps(world_state.state,indent=2)})
+            messages.append({"role": "system",
+                             "content": world_state.custom_instructions + " " + json.dumps(world_state.state,
+                                                                                           indent=2)})
         messages.append({"role": "user", "content": request})
 
         for message in additional_messages:
@@ -369,7 +333,7 @@ class EthicalAIChatbot:
                 suggestions_json = match  # Extract the matched JSON
                 suggestions = json.loads(suggestions_json)  # Attempt to parse the extracted JSON
                 self.mutable_values = suggestions
-                print (self.mutable_values)
+                print(self.mutable_values)
                 self.save_variables()
             else:
                 print(suggestions_text)  # Print the original text for debugging
@@ -391,7 +355,6 @@ class EthicalAIChatbot:
             print(f"An error occurred ")
             print(f"{self.name}: {response.encode('utf-8')}")
 
-
     # def correct_error(self, user_id, correct_interaction):
     #     """Provide a mechanism for the chatbot to correct its errors and ensure fairness."""
     #     response = f"Thank you for providing feedback. I'll strive to improve."
@@ -401,7 +364,6 @@ class EthicalAIChatbot:
     def log_and_display_response(self, user_id, request, response):
         self.chat_history.add_interaction(user_id, request, response)
         self.display_response(user_id, response)
-
 
     def get_src(self):
         """Retrieve the chatbot's own source code."""
