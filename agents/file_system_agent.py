@@ -31,7 +31,7 @@ class FileSystemAgent:
 
     def fill_in_command(self, user_id, request, openai, chat_history):
         """Generate responses using OpenAI API while adhering to ethical principles."""
-        messages = chat_history[-2:0]
+        messages = chat_history[-5:0]
         messages.append({
             "role": "system",
             "content": self.execute_command('dir'),

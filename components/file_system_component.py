@@ -8,7 +8,6 @@ class FileSystemComponent:
     def __init__(self, openai, working_directory='.'):
         self.openai = openai
         self.working_directory = working_directory
-        self.full_tree = {}
         self.gitignore_patterns = self.load_gitignore(self.working_directory)
 
     def open_file(self, file_path):
@@ -30,13 +29,15 @@ class FileSystemComponent:
         # Update current path if changing directories
         new_path = os.path.join(self.working_directory, dir_name)
         if os.path.isdir(new_path):
-            self.current_path = new_path
-            return f"Changed directory to {self.current_path}"
+            self.working_directory = new_path
+            print(f"Changed directory to {self.working_directory}")
+            return f"Changed directory to {self.working_directory}"
         else:
+            print(f"Directory {new_path} not found.")
             return "Directory not found."
 
     def current_directory_tree(self, full=False):
-        return self.get_directory_tree('.', full)
+        return self.get_directory_tree(self.working_directory, full)
 
     def get_directory_tree(self, path=".", full=False):
         """Recursively get the directory tree starting from the given path."""
@@ -61,9 +62,7 @@ class FileSystemComponent:
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
-                    compressed_content = self.compress_content(content)
-                    self.full_tree[file_path] = compressed_content
-                    return compressed_content
+                    return content
             except (UnicodeDecodeError, IOError) as e:
                 print(f"Could not read {file_path}: {str(e)}")
 
