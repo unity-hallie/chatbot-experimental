@@ -1,0 +1,59 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <style>
+    .cell {
+      fill: #d5e6f2;
+      stroke: #8ab1f9;
+      stroke-width: 4;
+    }
+    .organelle {
+      fill: #ffcc80;
+      stroke: #f57c00;
+      stroke-width: 2;
+    }
+    .nucleus {
+      fill: #fff176;
+      stroke: #fbc02d;
+      stroke-width: 2;
+    }
+    .label {
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      fill: #424242;
+    }
+    .spline {
+      fill: none;
+      stroke: #757575;
+      stroke-width: 2;
+      stroke-dasharray: 5, 5;
+    }
+  </style>
+
+  <!-- Cell Outline -->
+  <ellipse cx="400" cy="300" rx="300" ry="200" class="cell" />
+
+  <!-- Nucleus -->
+  <ellipse cx="400" cy="300" rx="100" ry="70" class="nucleus" />
+  <text x="400" y="300" text-anchor="middle" dominant-baseline="middle" class="label">Nucleus</text>
+
+  <!-- Mitochondria -->
+  <ellipse cx="250" cy="350" rx="30" ry="20" class="organelle" />
+  <text x="250" y="350" text-anchor="middle" dominant-baseline="middle" class="label">Mitochondrion</text>
+
+  <ellipse cx="550" cy="250" rx="30" ry="20" class="organelle" />
+  <text x="550" y="250" text-anchor="middle" dominant-baseline="middle" class="label">Mitochondrion</text>
+
+  <!-- Golgi Apparatus -->
+  <path d="M 300,450 Q 340,400 380,450 Q 340,500 300,450" class="organelle" />
+  <text x="340" y="465" text-anchor="middle" class="label">Golgi Apparatus</text>
+
+  <!-- Endoplasmic Reticulum -->
+  <path d="M 200,400 Q 230,370 260,400 Q 230,430 200,400 Z" class="organelle" />
+  <text x="230" y="390" text-anchor="middle" class="label">Er</text>
+
+  <path d="M 540,370 Q 570,340 600,370 Q 570,400 540,370 Z" class="organelle" />
+  <text x="570" y="390" text-anchor="middle" class="label">Er</text>
+
+  <!-- Splines -->
+  <path d="M 400,300 C 350,340 250,400 300,450" class="spline" />
+  <path d="M 400,300 C 450,340 550,400 500,450" class="spline" />
+</svg>

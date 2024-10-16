@@ -198,12 +198,7 @@ class EthicalAIChatbot:
         prompt_lines = [f"{key}: {value}" for key, value in principles.items()]
 
         # Instruction added for special token usage
-        special_instructions = (
-            # "If you believe a command is needed, please output it in the format: "
-            # "'[COMMAND: <your_command_here>]'. For example, respond with 'To proceed, please execute [COMMAND: my_command]'. "
-            # "This will help me identify and extract commands easily. "
-            # "When a situation calls for a specific task, format it accordingly."
-        )
+        special_instructions = ()
 
         if user_id in self.user_descriptions:
             self.variables['user'] = self.user_descriptions[user_id]

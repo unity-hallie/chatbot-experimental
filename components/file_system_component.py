@@ -1,6 +1,8 @@
 import difflib
 import fnmatch
 import os
+import subprocess
+from datetime import datetime
 
 
 class FileSystemComponent:
@@ -49,22 +51,53 @@ class FileSystemComponent:
             if os.path.isdir(item_path):
                 directory_tree[item] = self.get_directory_tree(item_path, full)
             else:
-                directory_tree[item] = self.process_file(item_path, full)
+                metadata = self.get_file_metadata(item_path)  # Get metadata
+                directory_tree[item] = {
+                    'content': self.process_file(item_path, full),
+                    'metadata': metadata  # Include metadata in the return
+                }
         return directory_tree
+
+    def get_file_metadata(self, file_path):
+        """Retrieve metadata for the specified file."""
+        try:
+            file_info = {
+                'size': os.path.getsize(file_path),  # Size in bytes
+                'git': self.get_git_history(file_path),
+                'modified_time': os.path.getmtime(file_path),  # Last modified time
+                'created_time': os.path.getctime(file_path),  # Creation time
+                'extension': os.path.splitext(file_path)[1],  # File extension
+                'is_hidden': file_path.startswith('.'),  # Check if the file is hidden
+                'modified_time_iso': datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),  # ISO format
+                'created_time_iso': datetime.fromtimestamp(os.path.getctime(file_path)).isoformat(),  # ISO format
+            }
+            return file_info
+        except Exception as e:
+            print(f"Error retrieving metadata for {file_path}: {e}")
+            return {}
 
     def process_file(self, file_path, full=False):
         """Process each file: check extension, size, convert to text, and compress."""
         if full and os.path.isfile(file_path) and file_path.endswith((
-                '.py','.html','.md', '.txt', '.css', '.gitignore',
-                '.ts',
-                '.tsx'
+                '.py', '.html', '.md', '.txt', '.css', '.gitignore',
+                '.ts', '.tsx'
         )) and os.path.getsize(file_path) < 1 * 1024 * 1024:
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
                     return content
-            except (UnicodeDecodeError, IOError) as e:
+            except UnicodeDecodeError as e:
+                # print(f"UnicodeDecodeError: {str(e)} - Trying to read in binary mode.")
+                try:
+                    with open(file_path, 'rb') as file:
+                        # Read bytes and decode with 'latin-1' or other fallback
+                        content = file.read()
+                        return content.decode('latin-1', errors='ignore')  # Ignore issues
+                except Exception as e:
+                    print(f"Could not read {file_path} in any encoding: {str(e)}")
+            except Exception as e:
                 print(f"Could not read {file_path}: {str(e)}")
+        return None  # Or some placeholder that indicates processing failure
 
     def compress_content(self, content):
         return content
@@ -119,3 +152,19 @@ class FileSystemComponent:
         ))
 
         return ''.join(diff)
+
+    def get_git_history(self, file_path):
+        """Fetch a summary of git history for a specified file."""
+        try:
+            # Run the git log command and capture the output
+            result = subprocess.run(
+                ['git', 'log', '--oneline', file_path],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.working_directory
+            )
+            return result.stdout.strip()  # Stripping to remove any trailing spaces
+        except subprocess.CalledProcessError as e:
+            print(f"Error fetching git history: {e}")
+            return "No git history found."
