@@ -1,9 +1,6 @@
-import difflib
 import json
 import os
-import fnmatch
 import re
-import subprocess
 import threading
 import weakref
 
@@ -11,7 +8,6 @@ import torch
 from torch import cosine_similarity
 from transformers import DistilBertTokenizer, DistilBertModel
 from functools import lru_cache
-from components.file_system_component import FileSystemComponent
 
 
 class FileSystemAgent:
@@ -31,10 +27,9 @@ class FileSystemAgent:
         self.intent_vectors = self._vectorize_intents(self.intent_phrases)
         self.open_file_vectors = self._vectorize_phrases(self.open_file_phrases)
 
-
     def change_directory(self, dir_name):
         with self.lock:  # Lock to prevent race conditions
-            new_path = os.path.join(self.working_directory, dir_name)
+            new_path = os.path.join(self.file_system.working_directory, dir_name)
             if os.path.isdir(new_path):
                 self.working_directory = new_path
                 print(f"Changed directory to {self.working_directory}")
@@ -48,7 +43,7 @@ class FileSystemAgent:
         messages = chat_history[-5:0]
         messages.append({
             "role": "system",
-            "content": self.execute_command('dir'),
+            "content": self.file_system.execute_command('dir'),
         })
 
         messages.append({
@@ -197,7 +192,7 @@ class FileSystemAgent:
                     for command in commands:
 
                         if input(f"Do you want to run the command? (y/n) {updated_command}") == 'y':
-                            command_result = self.execute_command(command["data"])
+                            command_result = self.file_system.execute_command(command["data"])
                             command_results.append([command, command_result])
                         else:
                             break
@@ -206,7 +201,7 @@ class FileSystemAgent:
                 command =  request[2:].strip()  # Strip '~~'
                 if input(f"Do you want to run the command? (y/n) {command}") == 'y':
                     print(command)
-                    command_results =[[command, self.execute_command(command)]]
+                    command_results =[[command, self.file_system.execute_command(command)]]
 
             return command_results
 
